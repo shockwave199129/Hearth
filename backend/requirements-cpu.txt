@@ -1,0 +1,10 @@
+# Tier B/C — Kokoro-82M TTS fallback (tts/chatterbox_engine.py's
+# KokoroEngine). See requirements-common.txt for why this is split from
+# requirements-gpu.txt at all.
+-r requirements-common.txt
+
+# kokoro-onnx==0.4.6+ requires numpy>=2.0.2 — verified via its own
+# dependency metadata.
+numpy>=2.0.2
+onnxruntime>=1.20.1   # kokoro-onnx==0.4.* requires onnxruntime>=1.20.1
+kokoro-onnx==0.4.*

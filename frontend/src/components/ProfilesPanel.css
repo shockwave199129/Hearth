@@ -1,0 +1,89 @@
+.profiles-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.profiles-panel__item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated-2);
+  padding: var(--space-3) var(--space-4);
+}
+
+.profiles-panel__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.profiles-panel__name {
+  font-size: var(--fs-sm);
+  font-weight: 560;
+  color: var(--color-text);
+}
+
+.profiles-panel__companion {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.profiles-panel__badge {
+  margin-left: var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--color-accent-strong);
+  background: var(--color-accent-soft);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+}
+
+.profiles-panel__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.profiles-panel__button {
+  border: none;
+  border-radius: var(--radius-full);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--fs-xs);
+  font-weight: 560;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  transition: all var(--duration-fast) var(--ease-standard);
+}
+
+.profiles-panel__button--primary {
+  background: var(--color-accent);
+  color: #10201a;
+}
+
+.profiles-panel__button--primary:hover {
+  background: var(--color-accent-strong);
+}
+
+.profiles-panel__button--danger {
+  background: transparent;
+  color: var(--color-danger);
+  border: 1px solid var(--color-danger-soft);
+}
+
+.profiles-panel__button--danger:hover {
+  background: var(--color-danger-soft);
+}
+
+.profiles-panel__button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.profiles-panel__add {
+  margin-top: var(--space-3);
+  width: fit-content;
+}

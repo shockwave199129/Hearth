@@ -1,0 +1,24 @@
+# Per-install encrypted user data — never shared, never committed.
+backend/data/*
+!backend/data/.gitkeep
+
+# Downloaded model weights — see scripts/setup.py.
+backend/models/**/*.gguf
+backend/models/**/*.onnx
+backend/models/**/*.bin
+
+# PyInstaller build workdir — scripts/build_backend.sh/.ps1's --workpath.
+/.pyinstaller-build
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node (frontend/, desktop/ each have their own too, this covers the rest)
+node_modules/
+
+# local files
+project-plan.md
+project-phases.md

@@ -1,0 +1,30 @@
+.app-splash {
+  height: 100%;
+  background: var(--color-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-splash__message {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  color: var(--color-text-muted);
+  animation: splash-pulse 2.4s var(--ease-standard) infinite;
+}
+
+@keyframes splash-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-splash__message {
+    animation: none;
+  }
+}

@@ -1,0 +1,112 @@
+name: Build desktop installers
+
+# Tauri bundlers are native, OS-specific tooling — a .msi can only be built
+# on Windows, a .dmg only on macOS, deb/rpm only on Linux. This matrix is
+# the practical way to get all three without owning three machines. See
+# desktop/src-tauri/tauri.conf.json's bundle.targets (deb/rpm, msi/nsis,
+# app/dmg — deliberately no appimage) and desktop/src-tauri/README.md for
+# what's still scaffold-only (unsigned builds).
+#
+# Each job freezes the Python backend (PyInstaller) and fetches a bundled
+# llama-server before the Tauri build, so the resulting installer needs
+# neither on the end user's machine — see backend/hearth-backend.spec,
+# scripts/build_backend.sh/.ps1, and scripts/fetch_llama_cpp.py.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-24.04
+            args: ""
+          - platform: windows-latest
+            args: ""
+          - platform: macos-latest
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Linux-only: the same webkit2gtk/gtk3/glib dev packages documented
+      # in desktop/src-tauri/README.md's "Linux build prerequisites".
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libglib2.0-dev \
+            build-essential curl wget file libssl-dev
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: |
+            frontend/pnpm-lock.yaml
+            desktop/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Fresh runner, no node_modules — install before tauri-action tries to
+      # run beforeBuildCommand (pnpm --dir ../../frontend run build, see
+      # tauri.conf.json) or invoke the Tauri CLI from desktop/.
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install desktop (Tauri CLI) dependencies
+        working-directory: desktop
+        run: pnpm install --frozen-lockfile
+
+      # Populates desktop/src-tauri/resources/hearth-backend/ — see
+      # backend/hearth-backend.spec for what's bundled and what's
+      # actually been verified vs. still-risky (chatterbox-tts in
+      # particular — flagged there, not glossed over).
+      - name: Freeze backend (Linux/macOS)
+        if: matrix.platform != 'windows-latest'
+        run: bash scripts/build_backend.sh
+
+      - name: Freeze backend (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: pwsh scripts/build_backend.ps1
+
+      # Populates desktop/src-tauri/resources/llama-cpp/ — CPU-only on
+      # Linux/Windows, Metal-included on macOS (its only variant). See
+      # scripts/fetch_llama_cpp.py for exactly what's and isn't bundled.
+      - name: Fetch bundled llama-server
+        run: |
+          pip install --quiet requests
+          python scripts/fetch_llama_cpp.py
+
+      - name: Build
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Code signing (needed for a smooth install experience, not just
+          # to produce a bundle) is deliberately NOT wired up here — add
+          # these as repo secrets once you have real certificates:
+          # - Windows: TAURI_SIGNING_PRIVATE_KEY / a real code-signing cert
+          # - macOS: APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
+          #   APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD,
+          #   APPLE_TEAM_ID (needed for notarization, or Gatekeeper blocks
+          #   the app on any machine but the one that built it)
+        with:
+          projectPath: desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: "Hearth ${{ github.ref_name }}"
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

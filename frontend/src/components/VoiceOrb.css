@@ -1,0 +1,146 @@
+.voice-orb-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.voice-orb {
+  position: relative;
+  width: clamp(160px, 28vw, 240px);
+  height: clamp(160px, 28vw, 240px);
+  border-radius: var(--radius-full);
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.voice-orb:disabled {
+  cursor: default;
+}
+
+.voice-orb__halo,
+.voice-orb__core,
+.voice-orb__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-full);
+}
+
+.voice-orb__halo {
+  background: var(--orb-glow);
+  filter: blur(28px);
+  opacity: 0.55;
+  transform: scale(1.05);
+  transition: opacity var(--duration-slow) var(--ease-standard);
+}
+
+.voice-orb__core {
+  inset: 14%;
+  background: var(--orb-glow);
+  box-shadow: var(--shadow-soft);
+  transform: scale(var(--reactive-scale, 1));
+  transition: transform 90ms var(--ease-out);
+  animation: orb-breathe 4.8s var(--ease-standard) infinite;
+}
+
+.voice-orb__ring {
+  inset: 6%;
+  border: 1.5px solid var(--color-accent);
+  opacity: 0;
+  transition: opacity var(--duration-normal) var(--ease-standard);
+}
+
+.voice-orb__label {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  letter-spacing: 0.01em;
+  min-height: 1.4em;
+}
+
+@keyframes orb-breathe {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.08);
+  }
+}
+
+/* idle: slow breathing halo, no reactive scale */
+.voice-orb--idle .voice-orb__halo {
+  animation: orb-breathe-halo 4.8s var(--ease-standard) infinite;
+}
+
+@keyframes orb-breathe-halo {
+  0%,
+  100% {
+    transform: scale(1.02);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.65;
+  }
+}
+
+/* listening: amplitude-reactive core (via --reactive-scale), steady ring */
+.voice-orb--listening .voice-orb__ring {
+  opacity: 0.6;
+}
+
+.voice-orb--listening .voice-orb__halo {
+  opacity: 0.7;
+  animation: none;
+}
+
+/* thinking: slow rotating shimmer instead of amplitude reaction */
+.voice-orb--thinking .voice-orb__core {
+  animation: orb-think 2.2s linear infinite;
+}
+
+.voice-orb--thinking .voice-orb__ring {
+  opacity: 0.4;
+  animation: orb-spin 3.6s linear infinite;
+  border-style: dashed;
+}
+
+@keyframes orb-think {
+  0%,
+  100% {
+    filter: brightness(1) saturate(1);
+  }
+  50% {
+    filter: brightness(1.15) saturate(1.2);
+  }
+}
+
+@keyframes orb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* speaking: brighter, amplitude drives scale via --reactive-scale from JS */
+.voice-orb--speaking .voice-orb__halo {
+  opacity: 0.8;
+  animation: none;
+}
+
+.voice-orb--speaking .voice-orb__ring {
+  opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-orb__core,
+  .voice-orb__halo,
+  .voice-orb__ring {
+    animation: none !important;
+  }
+}

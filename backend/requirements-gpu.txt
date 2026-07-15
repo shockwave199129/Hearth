@@ -1,0 +1,21 @@
+# Tier S/A — Chatterbox-Turbo TTS (tts/chatterbox_engine.py's
+# ChatterboxEngine). See requirements-common.txt for why this is split from
+# requirements-cpu.txt at all.
+-r requirements-common.txt
+
+# chatterbox-tts 0.1.7's own declared constraint (verified via PyPI
+# metadata) is `numpy<2.0.0,>=1.24.0` for python_version < "3.13" — matching
+# that range directly rather than over-constraining lets the resolver land
+# on a numpy version that actually has Python 3.12 wheels (1.24.x/1.25.x
+# never shipped cp312 wheels at all — confirmed via PyPI; numpy first added
+# 3.12 support at 1.26.0).
+numpy>=1.24.0,<2.0.0
+
+# Pinned to exactly 0.1.7, not `0.1.*` — older 0.1.x releases (<=0.1.6)
+# depend on the abandoned `pkuseg` package, whose ancient setup.py fails to
+# build on Python 3.12 (`pkg_resources.ImpImporter` was removed from
+# `pkgutil`). 0.1.7 depends on `spacy-pkuseg` instead (a maintained fork
+# with real wheels) — verified: a full `pyinstaller` build of this exact
+# environment, chatterbox included, succeeded end to end, and the frozen
+# executable started up correctly.
+chatterbox-tts==0.1.7

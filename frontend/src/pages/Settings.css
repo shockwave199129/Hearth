@@ -1,0 +1,106 @@
+.settings {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+}
+
+.settings h1 {
+  font-size: var(--fs-2xl);
+}
+
+.settings__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.settings__section:last-child {
+  border-bottom: none;
+}
+
+.settings__section h2 {
+  font-size: var(--fs-md);
+  color: var(--color-text-muted);
+  font-family: var(--font-body);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings__hint {
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-relaxed);
+  max-width: 34rem;
+}
+
+.settings__error {
+  color: var(--color-danger);
+  font-size: var(--fs-sm);
+}
+
+.settings__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.settings__grid dt {
+  font-size: var(--fs-xs);
+  color: var(--color-text-faint);
+  margin-bottom: var(--space-1);
+}
+
+.settings__grid dd {
+  margin: 0;
+  font-size: var(--fs-md);
+  color: var(--color-text);
+}
+
+.settings__segmented {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 3px;
+  width: fit-content;
+}
+
+.settings__segment {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-sm);
+  text-transform: capitalize;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-standard);
+}
+
+.settings__segment--active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+}
+
+.settings__segment:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.settings__field-label {
+  font-size: var(--fs-xs);
+  color: var(--color-text-faint);
+}

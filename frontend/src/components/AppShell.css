@@ -1,0 +1,107 @@
+.app-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  height: 100%;
+}
+
+.app-shell__rail {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-6) var(--space-4);
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+}
+
+.app-shell__brand {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-7);
+}
+
+.app-shell__links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.app-shell__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: var(--fs-sm);
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+
+.app-shell__link:hover {
+  background: var(--color-bg-elevated-2);
+  color: var(--color-text);
+}
+
+.app-shell__link--active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+}
+
+.app-shell__footer {
+  margin-top: auto;
+}
+
+.app-shell__content {
+  overflow-y: auto;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .app-shell__rail {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: var(--space-2);
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .app-shell__brand {
+    margin-bottom: 0;
+    margin-right: var(--space-6);
+  }
+
+  .app-shell__links {
+    flex-direction: row;
+  }
+
+  .app-shell__footer {
+    margin-top: 0;
+    margin-left: auto;
+  }
+}
+
+/* Real phone widths — condense further instead of relying on wrap alone,
+   which still left the tier badge's full description fighting for space
+   with the brand name and nav links on a single line. */
+@media (max-width: 480px) {
+  .app-shell__link span {
+    display: none;
+  }
+
+  .app-shell__link {
+    padding: var(--space-3);
+  }
+
+  .app-shell__footer {
+    width: 100%;
+    margin-left: 0;
+    order: 1;
+  }
+}
