@@ -6,5 +6,5 @@
 # kokoro-onnx==0.4.6+ requires numpy>=2.0.2 — verified via its own
 # dependency metadata.
 numpy>=2.0.2
-onnxruntime>=1.20.1   # kokoro-onnx==0.4.* requires onnxruntime>=1.20.1
+onnxruntime>=1.21.0   # kokoro-onnx==0.4.* requires onnxruntime>=1.20.1; newer version supports numpy 2.x
 kokoro-onnx==0.4.*
