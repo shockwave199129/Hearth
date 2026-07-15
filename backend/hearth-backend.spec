@@ -145,17 +145,26 @@ a = Analysis(
 # After creating the Analysis object, collect additional package data and
 # binaries for packages that PyInstaller may miss. This must occur after `a`
 # is defined because we extend `a.binaries`.
+# Collect additional package data and binaries, handling cases where
+# ``collect_all`` returns binary entries with only two elements (src, dest).
+# PyInstaller expects a three‑tuple (src, dest, type). When the type is
+# omitted we default to "data" which is safe for most resources.
 for _pkg in _COLLECT_ALL_PACKAGES:
     _datas, _binaries, _hiddenimports = collect_all(_pkg)
     datas += _datas
     hiddenimports += _hiddenimports
     # Filter out libmoonshine.so from binaries collected by collect_all()
-    _binaries = [
-        (src, dest, typ)
-        for src, dest, typ in _binaries
-        if not src.endswith("libmoonshine.so")
-    ]
-    a.binaries += _binaries
+    cleaned_binaries = []
+    for entry in _binaries:
+        # entry may be (src, dest, typ) or (src, dest)
+        if len(entry) == 3:
+            src, dest, typ = entry
+        else:
+            src, dest = entry
+            typ = "data"
+        if not src.endswith("libmoonshine.so"):
+            cleaned_binaries.append((src, dest, typ))
+    a.binaries += cleaned_binaries
 
 # Build the PYZ archive (pure Python modules) and the executable wrapper.
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
