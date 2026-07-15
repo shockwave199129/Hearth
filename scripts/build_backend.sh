@@ -13,10 +13,10 @@ RESOURCES_DIR="$REPO_ROOT/desktop/src-tauri/resources"
 
 # requirements-common.txt first so detect_tier_requirements.py has psutil
 # (and everything else it transitively needs) before it runs.
-pip install --quiet -r "$BACKEND_DIR/requirements-common.txt"
+pip install --quiet --only-binary=:all: -r "$BACKEND_DIR/requirements-common.txt"
 TIER_REQ="$(python3 "$SCRIPT_DIR/detect_tier_requirements.py")"
 echo "Detected tier requirements: $TIER_REQ"
-pip install --quiet -r "$BACKEND_DIR/$TIER_REQ" pyinstaller
+pip install --quiet --only-binary=:all: -r "$BACKEND_DIR/$TIER_REQ" pyinstaller
 
 cd "$BACKEND_DIR"
 pyinstaller --noconfirm --clean \

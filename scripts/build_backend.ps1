@@ -11,10 +11,10 @@ $ResourcesDir = Join-Path $RepoRoot "desktop\src-tauri\resources"
 
 # requirements-common.txt first so detect_tier_requirements.py has psutil
 # (and everything else it transitively needs) before it runs.
-pip install --quiet -r "$BackendDir\requirements-common.txt"
+pip install --quiet --only-binary=:all: -r "$BackendDir\requirements-common.txt"
 $TierReq = (python "$ScriptDir\detect_tier_requirements.py").Trim()
 Write-Host "Detected tier requirements: $TierReq"
-pip install --quiet -r "$BackendDir\$TierReq" pyinstaller
+pip install --quiet --only-binary=:all: -r "$BackendDir\$TierReq" pyinstaller
 
 Push-Location $BackendDir
 try {
