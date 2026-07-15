@@ -22,3 +22,4 @@ node_modules/
 # local files
 project-plan.md
 project-phases.md
+.claude/
