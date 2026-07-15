@@ -18,7 +18,18 @@ sounddevice==0.5.*
 # Encryption at rest — OS-keychain key management + DB-level encryption.
 keyring==25.*
 cryptography==43.*
-sqlcipher3-binary==0.5.*
+
+# SQLCipher 4.x — DB-level encryption of profile.db. The historical
+# `sqlcipher3-binary` distribution was discontinued on PyPI, so pin the
+# source `sqlcipher3` package directly — since 0.6.0 it ships prebuilt
+# wheels for cp39-cp314 on Windows (x86/x64/arm64), macOS
+# (universal2/x86_64/arm64), and Linux (x86_64/aarch64/i686 + musllinux),
+# so this is a drop-in replacement: import path is unchanged
+# (`from sqlcipher3 import dbapi2` in app/db/sqlite_models.py) and PyInstaller
+# picks the bundled compiled extension up automatically once the import is
+# found (see hearth-backend.spec's hiddenimports and its note about
+# collect_dynamic_libs("sqlcipher3") finding nothing).
+sqlcipher3==0.6.*
 
 # STT — Moonshine Voice (github.com/moonshine-ai/moonshine), onnx runtime
 # backend. The old `useful-moonshine` git package (usefulsensors/moonshine)

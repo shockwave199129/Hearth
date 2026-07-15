@@ -2,12 +2,12 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Hearth",
   "version": "0.1.0",
-  "identifier": "com.hearth.app",
+  "identifier": "com.hearth.desktop",
   "build": {
-    "frontendDist": "../../frontend/dist",
+    "frontendDist": "../frontend/dist",
     "devUrl": "http://127.0.0.1:5173",
-    "beforeDevCommand": "pnpm --dir ../../frontend run dev",
-    "beforeBuildCommand": "pnpm --dir ../../frontend run build"
+    "beforeDevCommand": "pnpm --dir ../frontend run dev",
+    "beforeBuildCommand": "pnpm --dir ../frontend run build"
   },
   "app": {
     "windows": [
