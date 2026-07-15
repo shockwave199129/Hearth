@@ -14,11 +14,11 @@ $ResourcesDir = Join-Path $RepoRoot "desktop\src-tauri\resources"
 pip install --quiet --only-binary=:all: -r "$BackendDir\requirements-common.txt"
 $TierReq = (python "$ScriptDir\detect_tier_requirements.py").Trim()
 Write-Host "Detected tier requirements: $TierReq"
-pip install --quiet --only-binary=:all: -r "$BackendDir\$TierReq" pyinstaller
+pip install --quiet --only-binary=:all: -r "$BackendDir\$TierReq"
 
 Push-Location $BackendDir
 try {
-    pyinstaller --noconfirm --clean `
+    python -m PyInstaller --noconfirm --clean `
         --distpath "$ResourcesDir" `
         --workpath "$RepoRoot\.pyinstaller-build" `
         hearth-backend.spec

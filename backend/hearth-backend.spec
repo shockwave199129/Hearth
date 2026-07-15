@@ -126,6 +126,9 @@ for _pkg in _COLLECT_ALL_PACKAGES:
     _datas, _binaries, _hiddenimports = collect_all(_pkg)
     datas += _datas
     hiddenimports += _hiddenimports
+    # Filter out libmoonshine.so from binaries collected by collect_all()
+    _binaries = [(src, dest, typ) for src, dest, typ in _binaries if not src.endswith("libmoonshine.so")]
+    a.binaries += _binaries
 
 a = Analysis(
     [str(APP_DIR / "main.py")],
@@ -137,18 +140,6 @@ a = Analysis(
     excludes=[],
     noarchive=False,
     cipher=block_cipher,
-)
-
-# Filter out the Linux-only libmoonshine.so binary which causes Mach-O parsing errors on macOS.
-# The moonshine_voice package includes this shared library for Linux builds, but macOS
-# provides its own native binary via the appropriate wheel. Removing it from the
-# collected binaries prevents PyInstaller from attempting to analyze the ELF file.
-if hasattr(a, "binaries"):
-    a.binaries = [(src, dest, typ) for src, dest, typ in a.binaries if not src.endswith("libmoonshine.so")]
-
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-
-exe = EXE(
     pyz,
     a.scripts,
     [],
