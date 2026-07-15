@@ -10,7 +10,9 @@ $BackendDir = Join-Path $RepoRoot "backend"
 $ResourcesDir = Join-Path $RepoRoot "desktop\src-tauri\resources"
 
 pip install --quiet --only-binary=:all: -r "$BackendDir\requirements-common.txt"
-$TierReq = (python "$ScriptDir\detect_tier_requirements.py").Trim()
+# On Windows CI we force the CPU tier requirements to avoid GPU‑specific
+# dependencies that may not be installable in the runner environment.
+$TierReq = "requirements-cpu.txt"
 Write-Host "Detected tier requirements: $TierReq"
 pip install --quiet --only-binary=:all: -r "$BackendDir\$TierReq"
 # Ensure PyInstaller is available for the subsequent freeze step.
