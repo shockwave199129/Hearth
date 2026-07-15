@@ -139,6 +139,13 @@ a = Analysis(
     cipher=block_cipher,
 )
 
+# Filter out the Linux-only libmoonshine.so binary which causes Mach-O parsing errors on macOS.
+# The moonshine_voice package includes this shared library for Linux builds, but macOS
+# provides its own native binary via the appropriate wheel. Removing it from the
+# collected binaries prevents PyInstaller from attempting to analyze the ELF file.
+if hasattr(a, "binaries"):
+    a.binaries = [(src, dest, typ) for src, dest, typ in a.binaries if not src.endswith("libmoonshine.so")]
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
