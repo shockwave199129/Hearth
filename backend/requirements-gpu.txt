@@ -20,4 +20,4 @@ numpy>=1.24.0,<2.0.0
 # executable started up correctly.
 chatterbox-tts==0.1.7
 # Pin omegaconf to a version with valid metadata to avoid pip warnings on Windows.
-omegaconf>=2.1.0
+omegaconf==2.1.0
