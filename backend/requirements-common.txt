@@ -15,6 +15,9 @@ psutil==6.*
 requests==2.32.*
 sounddevice==0.5.*
 
+# onnx is required for onnxruntime.quantization submodule import
+onnx==1.16.*
+
 # Encryption at rest — OS-keychain key management + DB-level encryption.
 keyring==25.*
 cryptography==43.*
