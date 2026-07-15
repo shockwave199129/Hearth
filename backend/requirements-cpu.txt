@@ -4,7 +4,9 @@
 -r requirements-common.txt
 
 # kokoro-onnx==0.4.6+ requires numpy>=2.0.2 — verified via its own
-# dependency metadata.
-numpy>=2.0.2
-onnxruntime>=1.21.0   # kokoro-onnx==0.4.* requires onnxruntime>=1.20.1; newer version supports numpy 2.x
-kokoro-onnx==0.4.*
+# dependency metadata. Pin to <0.4.6 to stay compatible with chromadb==0.5.*
+# (which requires numpy<2.0.0). onnxruntime>=1.20.1 works with both numpy
+# ranges; 1.21.0+ adds numpy 2.x support but isn't required here.
+numpy<2.0.0
+onnxruntime>=1.20.1
+kokoro-onnx<0.4.6,>=0.4.0
