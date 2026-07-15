@@ -9,12 +9,10 @@ $RepoRoot = Split-Path -Parent $ScriptDir
 $BackendDir = Join-Path $RepoRoot "backend"
 $ResourcesDir = Join-Path $RepoRoot "desktop\src-tauri\resources"
 
-# requirements-common.txt first so detect_tier_requirements.py has psutil
-# (and everything else it transitively needs) before it runs.
-$pip install --quiet --only-binary=:all: -r "$BackendDir\requirements-common.txt"
+pip install --quiet --only-binary=:all: -r "$BackendDir\requirements-common.txt"
 $TierReq = (python "$ScriptDir\detect_tier_requirements.py").Trim()
 Write-Host "Detected tier requirements: $TierReq"
-$pip install --quiet --only-binary=:all: -r "$BackendDir\$TierReq"
+pip install --quiet --only-binary=:all: -r "$BackendDir\$TierReq"
 # Ensure PyInstaller is available for the subsequent freeze step.
 pip install --quiet pyinstaller
 
