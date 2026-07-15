@@ -32,6 +32,10 @@
 # hiddenimports only reference the package that's actually installed.
 from pathlib import Path
 
+# Import the core PyInstaller building classes required for the spec.
+# These were previously missing, which can lead to runtime errors.
+from PyInstaller.building.build_main import Analysis, PYZ, EXE, COLLECT
+
 from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
@@ -106,8 +110,6 @@ if _HAS_KOKORO:
 # Packages with native extensions / plugin-style dynamic imports that
 # PyInstaller's default analysis reliably misses — collect_all() pulls in
 # their submodules, data files, and bundled shared libraries together.
-# torch (pulled in only for the chatterbox tier) is the single largest and
-# riskiest of these (GBs, CUDA-vs-CPU wheel differences).
 _COLLECT_ALL_PACKAGES = [
     "chromadb",
     "onnxruntime",
@@ -122,14 +124,12 @@ if _HAS_CHATTERBOX:
 if _HAS_KOKORO:
     _COLLECT_ALL_PACKAGES += ["kokoro_onnx"]
 
-for _pkg in _COLLECT_ALL_PACKAGES:
-    _datas, _binaries, _hiddenimports = collect_all(_pkg)
-    datas += _datas
-    hiddenimports += _hiddenimports
-    # Filter out libmoonshine.so from binaries collected by collect_all()
-    _binaries = [(src, dest, typ) for src, dest, typ in _binaries if not src.endswith("libmoonshine.so")]
-    a.binaries += _binaries
+# NOTE: The collection of package data is performed after the Analysis
+# step (which defines the `a` object) to avoid referencing `a` before it is
+# created.
 
+# Define the analysis step for PyInstaller. Only positional arguments are
+# provided first, followed by keyword arguments as required by the API.
 a = Analysis(
     [str(APP_DIR / "main.py")],
     pathex=[str(BACKEND_DIR)],
@@ -140,6 +140,27 @@ a = Analysis(
     excludes=[],
     noarchive=False,
     cipher=block_cipher,
+)
+
+# After creating the Analysis object, collect additional package data and
+# binaries for packages that PyInstaller may miss. This must occur after `a`
+# is defined because we extend `a.binaries`.
+for _pkg in _COLLECT_ALL_PACKAGES:
+    _datas, _binaries, _hiddenimports = collect_all(_pkg)
+    datas += _datas
+    hiddenimports += _hiddenimports
+    # Filter out libmoonshine.so from binaries collected by collect_all()
+    _binaries = [
+        (src, dest, typ)
+        for src, dest, typ in _binaries
+        if not src.endswith("libmoonshine.so")
+    ]
+    a.binaries += _binaries
+
+# Build the PYZ archive (pure Python modules) and the executable wrapper.
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+exe = EXE(
     pyz,
     a.scripts,
     [],
