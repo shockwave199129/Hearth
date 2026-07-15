@@ -1,5 +1,11 @@
 name: Build desktop installers
 
+# Grant the GITHUB_TOKEN sufficient scopes to create releases.
+permissions:
+  # Needed to create a draft release and upload assets.
+  contents: write
+  releases: write
+
 # Tauri bundlers are native, OS-specific tooling — a .msi can only be built
 # on Windows, a .dmg only on macOS, deb/rpm only on Linux. This matrix is
 # the practical way to get all three without owning three machines. See
