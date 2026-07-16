@@ -3,14 +3,18 @@
 # at all.
 -r requirements-common.txt
 
-# Installing from git+https://github.com/huggingface/parler-tts.git (as HF's
-# own quickstart recommends) was tried and reverted: HEAD's setup.py pins
-# the plain `descript-audiotools`/`descript-audio-codec` packages, which
-# drag in librosa==0.11.0 -> numba==0.53.1 -> llvmlite==0.36.0 — and
-# llvmlite 0.36 only builds on Python <3.10, so this failed on every OS in
-# CI (Python 3.12). The 0.2.3 PyPI release instead depends on the
-# `-unofficial` forks (descript-audiotools-unofficial/
-# descript-audio-codec-unofficial), which leave librosa/numba unconstrained
-# and resolve to modern, Python-3.12-compatible versions — verified via
-# PyPI metadata for both.
-parler-tts==0.2.3
+# The real cause of the build failure this comment used to describe as a
+# PyPI-vs-git issue: it's neither. parler-tts pulls in librosa (via
+# descript-audiotools, whether the plain package from this git ref or the
+# "-unofficial" fork PyPI's 0.2.3 uses — both declare an unconstrained
+# `numba` dependency identically) -> numba -> llvmlite. numba's latest
+# release (0.66.0) caps its own numpy support at `numpy<2.5` — but
+# requirements-common.txt's `numpy>=2.0.0` has no ceiling, so the resolver
+# picks numpy 2.5.1 (too new for any numba release to support yet) and is
+# then forced to backtrack numba all the way down to 0.53.1, which predates
+# numba's numpy upper-bound pinning entirely — and 0.53.1 requires
+# Python<3.10, which is what actually broke the build on Python 3.12.
+# `numpy<2.5` below (verified via PyPI metadata: numba 0.66.0's own pin)
+# fixes this regardless of which parler-tts install method is used —
+# confirmed via a real `uv pip compile` against both.
+git+https://github.com/huggingface/parler-tts.git

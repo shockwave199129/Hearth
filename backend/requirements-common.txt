@@ -68,11 +68,14 @@ langchain-openai>=1.0,<2.0
 chromadb>=1.5
 
 # chromadb>=1.5's own declared constraint (verified via PyPI metadata,
-# 1.5.9) is numpy>=1.22.5 with no upper bound, so numpy>=2.0.0 below is
-# fine. Pinned here rather than per-tier since neither tier's TTS stack
-# constrains numpy either: parler-tts and ttstokenizer/onnxruntime
-# (requirements-gpu.txt/-cpu.txt) both leave it unconstrained on their own.
-numpy>=2.0.0
+# 1.5.9) is numpy>=1.22.5 with no upper bound — the floor here is just to
+# stay current. The <2.5 ceiling is the real constraint: it's numba
+# 0.66.0's own limit (a transitive dependency of parler-tts's audio-codec
+# stack on the GPU tier only), and an unbounded numpy here forced the
+# resolver to backtrack numba all the way down to a pre-Python-3.10-only
+# release — see requirements-gpu.txt for the full chain. ttstokenizer/
+# onnxruntime (requirements-cpu.txt) don't care either way.
+numpy>=2.0.0,<2.5
 
 # Model downloads — scripts/setup.py and tts_engines.py's KokoroEngine both
 # use this directly (hf_hub_download()) to pull model files from

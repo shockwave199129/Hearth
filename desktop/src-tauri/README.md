@@ -45,10 +45,13 @@ references that tier's `collect_all()`/hidden-imports.
   Tier S/A users on Linux/Windows wanting GPU accel still need to swap in
   their own GPU-enabled `llama-server` build via `LLAMA_SERVER_BIN` — the
   same escape hatch, just no longer the default path.
-- **Icons are placeholders.** `icons/*.png` are solid-color placeholders
-  generated to unblock `tauri build`; there's no `.ico`/`.icns` yet, which
-  Windows/macOS bundling need for a polished result. Run `npx tauri icon
-  <source.png>` against a real app icon before shipping.
+- **Icons are placeholders.** All of `icons/` (including `icon.ico`/
+  `icon.icns`, generated via `pnpm tauri icon src-tauri/icons/icon.png`
+  after Windows CI failed with `icons/icon.ico not found` — tauri-build's
+  build.rs needs that exact file to embed a Windows resource icon,
+  independent of tauri.conf.json's `icon` list) are still just the
+  original solid-color placeholder upscaled, not real artwork. Re-run that
+  same command against a real app icon before shipping.
 - **Unsigned builds** — see the code-signing section below.
 
 ## Linux build prerequisites
