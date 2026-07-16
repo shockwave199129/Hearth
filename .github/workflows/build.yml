@@ -26,13 +26,17 @@ permissions:
 # Six jobs: x64 + ARM64 for each of Linux/Windows/macOS. Each is a native
 # build on a matching-architecture runner (not cross-compiled), so Rust/
 # PyInstaller/etc. all just target the host by default — no extra
-# toolchain config needed. macOS Intel (macos-15-large) is the one
-# exception worth knowing about: as of macOS 14+, GitHub only offers Intel
-# runners as "-large" instances, and confirmed via GitHub's own billing
-# docs, "larger runners" always incur per-minute cost regardless of repo
-# visibility — unlike every other runner here, which is free for this
-# repo (public). Windows/Linux ARM64 (windows-11-arm, ubuntu-24.04-arm)
-# are standard runners, no such cost caveat.
+# toolchain config needed. macos-26/macos-26-intel (not macos-latest,
+# which currently resolves to macOS 15) — confirmed both are GA, not
+# preview, via actions/runner-images' own table. macOS Intel
+# (macos-26-intel) is the one exception worth knowing about: as of macOS
+# 14+, GitHub only offers Intel runners as "-large"-tier instances (bare
+# macos-26 is the free ARM64 standard tier; macos-26-intel/-large is a
+# separate, always-paid tier — confirmed via GitHub's own billing docs,
+# which state "larger runners" always incur per-minute cost regardless of
+# repo visibility) — unlike every other runner here, which is free for
+# this repo (public). Windows/Linux ARM64 (windows-11-arm,
+# ubuntu-24.04-arm) are standard runners, no such cost caveat.
 #
 # Each job freezes the Python backend (PyInstaller), fetches a bundled
 # llama-server, and fetches the bundled setup-time Python, so the
@@ -59,8 +63,8 @@ jobs:
           - ubuntu-24.04-arm
           - windows-latest
           - windows-11-arm
-          - macos-latest
-          - macos-15-large
+          - macos-26
+          - macos-26-intel
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
