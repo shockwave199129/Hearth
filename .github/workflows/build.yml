@@ -23,20 +23,28 @@ permissions:
 # too (six jobs, Hearth-GPU/Hearth-CPU installers) — collapsed back to
 # per-platform-only now that no installer needs to differ by tier at all.
 #
-# Six jobs: x64 + ARM64 for each of Linux/Windows/macOS. Each is a native
-# build on a matching-architecture runner (not cross-compiled), so Rust/
-# PyInstaller/etc. all just target the host by default — no extra
-# toolchain config needed. macos-26/macos-26-intel (not macos-latest,
-# which currently resolves to macOS 15) — confirmed both are GA, not
-# preview, via actions/runner-images' own table. macOS Intel
-# (macos-26-intel) is the one exception worth knowing about: as of macOS
-# 14+, GitHub only offers Intel runners as "-large"-tier instances (bare
-# macos-26 is the free ARM64 standard tier; macos-26-intel/-large is a
-# separate, always-paid tier — confirmed via GitHub's own billing docs,
-# which state "larger runners" always incur per-minute cost regardless of
-# repo visibility) — unlike every other runner here, which is free for
-# this repo (public). Windows/Linux ARM64 (windows-11-arm,
-# ubuntu-24.04-arm) are standard runners, no such cost caveat.
+# Five jobs: x64 + ARM64 for Linux/Windows, Apple Silicon-only for macOS.
+# Each is a native build on a matching-architecture runner (not
+# cross-compiled), so Rust/PyInstaller/etc. all just target the host by
+# default — no extra toolchain config needed. macos-26 (not macos-latest,
+# which currently resolves to macOS 15) — confirmed GA, not preview, via
+# actions/runner-images' own table.
+#
+# macOS Intel (macos-26-intel) was tried and reverted: caught on a real
+# CI run, moonshine-voice (the STT engine, required on every tier via
+# requirements-common.txt) has never published a macOS x86_64 wheel for
+# any version >=0.0.60 — confirmed by checking its entire release history
+# on PyPI. A handful of older versions (0.0.30-0.0.59, inconsistently)
+# published a universal2 wheel that would have covered Intel too, but
+# those predate the >=0.0.68 floor this project pins to specifically
+# because that's the version actually verified working end-to-end (see
+# requirements-common.txt) — not worth the risk of un-verifying that for
+# Intel Mac support. Windows/Linux ARM64 (windows-11-arm,
+# ubuntu-24.04-arm) hit no equivalent dependency gap and remain in the
+# matrix; they're also standard (free) runners, unlike macOS Intel would
+# have been (GitHub only offers Intel macOS as an always-paid "-large"
+# tier as of macOS 14+, confirmed via GitHub's own billing docs) — moot
+# now, but worth remembering if Intel Mac ever comes back into scope.
 #
 # Each job freezes the Python backend (PyInstaller), fetches a bundled
 # llama-server, and fetches the bundled setup-time Python, so the
@@ -64,7 +72,6 @@ jobs:
           - windows-latest
           - windows-11-arm
           - macos-26
-          - macos-26-intel
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
