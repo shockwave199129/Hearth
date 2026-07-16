@@ -16,6 +16,9 @@ __pycache__/
 .venv/
 venv/
 
+# Local dev env overrides — see backend/.env.example for what's available.
+backend/.env
+
 # Node (frontend/, desktop/ each have their own too, this covers the rest)
 node_modules/
 

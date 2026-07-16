@@ -2,7 +2,17 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+# Local dev convenience — e.g. LLAMA_SERVER_BIN when running the backend
+# directly via a venv rather than through the packaged desktop app (which
+# sets env vars itself, see scripts/build_backend.sh/.ps1). Does nothing if
+# backend/.env doesn't exist; never overrides a var already set in the real
+# environment (override=False, load_dotenv's own default).
+load_dotenv(BACKEND_DIR / ".env")
+
 MODELS_DIR = BACKEND_DIR / "models"
 DATA_DIR = BACKEND_DIR / "data"
 

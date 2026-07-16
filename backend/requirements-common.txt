@@ -11,6 +11,7 @@ uvicorn[standard]==0.51.*
 websockets==16.*
 pydantic==2.*
 PyYAML==6.*   # skills library front-matter parsing (app/skills/loader.py)
+python-dotenv==1.*   # loads backend/.env for local dev — see app/config.py
 # psutil==7.0.0 removed Process.memory_info_ex() and renamed
 # Process.connections() -> Process.net_connections() — neither used here
 # (detect.py only calls virtual_memory()/cpu_count()), so the bump is safe.
