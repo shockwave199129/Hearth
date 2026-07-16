@@ -39,24 +39,41 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # extraConfig: additional --config JSON fields merged in below,
+          # as a leading-comma fragment (empty string for every row that
+          # doesn't need one). Only the Linux GPU row sets one: Tauri's rpm
+          # bundler (the pure-Rust `rpm` crate, not the system `rpmbuild` —
+          # confirmed via its actual source, so this isn't a dependency-
+          # scanning slowdown) gzip-compresses the entire onedir payload
+          # single-threaded with zero progress output, and the GPU tier's
+          # torch-heavy bundle (~6GB) made that run past an hour with no
+          # sign of finishing before it was manually cancelled. `.deb`
+          # alone still covers Debian/Ubuntu; only the Linux GPU tier drops
+          # `rpm` — the CPU tier's much smaller bundle keeps it.
           - platform: ubuntu-24.04
             tier: gpu
             productName: "Hearth-GPU"
+            extraConfig: ',"bundle":{"targets":["deb"]}'
           - platform: ubuntu-24.04
             tier: cpu
             productName: "Hearth-CPU"
+            extraConfig: ""
           - platform: windows-latest
             tier: gpu
             productName: "Hearth-GPU"
+            extraConfig: ""
           - platform: windows-latest
             tier: cpu
             productName: "Hearth-CPU"
+            extraConfig: ""
           - platform: macos-latest
             tier: gpu
             productName: "Hearth-GPU"
+            extraConfig: ""
           - platform: macos-latest
             tier: cpu
             productName: "Hearth-CPU"
+            extraConfig: ""
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -150,4 +167,4 @@ jobs:
           # apart at the first embedded quote — this failed on every job
           # that reached this step. Single quotes need no inner escaping,
           # and the missing space means there's nothing left to split on.
-          args: --config '{"productName":"${{ matrix.productName }}"}'
+          args: --config '{"productName":"${{ matrix.productName }}"${{ matrix.extraConfig }}}'
