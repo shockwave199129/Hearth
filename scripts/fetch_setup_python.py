@@ -32,8 +32,11 @@ PBS_TAG = "20260623"
 PBS_PYTHON_VERSION = "3.12.13"
 _ASSET_BY_PLATFORM = {
     ("Linux", "x86_64"): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-x86_64-unknown-linux-gnu-install_only.tar.gz",
+    ("Linux", "aarch64"): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-aarch64-unknown-linux-gnu-install_only.tar.gz",
     ("Windows", "AMD64"): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-x86_64-pc-windows-msvc-install_only.tar.gz",
+    ("Windows", "ARM64"): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-aarch64-pc-windows-msvc-install_only.tar.gz",
     ("Darwin", "arm64"): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-aarch64-apple-darwin-install_only.tar.gz",
+    ("Darwin", "x86_64"): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-x86_64-apple-darwin-install_only.tar.gz",
 }
 
 

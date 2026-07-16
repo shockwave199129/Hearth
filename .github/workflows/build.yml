@@ -13,21 +13,35 @@ permissions:
 # app/dmg — deliberately no appimage) and desktop/src-tauri/README.md for
 # what's still scaffold-only (unsigned builds).
 #
-# One job per OS, not per hardware tier — the backend freeze is a THIN
-# build (requirements-common.txt only, no torch/onnxruntime/parler-tts/
-# ttstokenizer). CI has no GPU to match those against anyway; that
-# decision (and which CUDA/ROCm/DirectML variant to use) now happens on
-# the user's own machine at first run instead, via a bundled standalone
+# One job per OS+arch, not per hardware tier — the backend freeze is a
+# THIN build (requirements-common.txt only, no torch/onnxruntime/
+# parler-tts/ttstokenizer). CI has no GPU to match those against anyway;
+# that decision (and which CUDA/ROCm/DirectML variant to use) now happens
+# on the user's own machine at first run instead, via a bundled standalone
 # Python (scripts/fetch_setup_python.py) and backend/app/setup/'s
 # /api/setup/* endpoints. This used to matrix across a GPU/CPU tier axis
 # too (six jobs, Hearth-GPU/Hearth-CPU installers) — collapsed back to
-# three now that neither installer needs to differ by tier at all.
+# per-platform-only now that no installer needs to differ by tier at all.
+#
+# Six jobs: x64 + ARM64 for each of Linux/Windows/macOS. Each is a native
+# build on a matching-architecture runner (not cross-compiled), so Rust/
+# PyInstaller/etc. all just target the host by default — no extra
+# toolchain config needed. macOS Intel (macos-15-large) is the one
+# exception worth knowing about: as of macOS 14+, GitHub only offers Intel
+# runners as "-large" instances, and confirmed via GitHub's own billing
+# docs, "larger runners" always incur per-minute cost regardless of repo
+# visibility — unlike every other runner here, which is free for this
+# repo (public). Windows/Linux ARM64 (windows-11-arm, ubuntu-24.04-arm)
+# are standard runners, no such cost caveat.
 #
 # Each job freezes the Python backend (PyInstaller), fetches a bundled
 # llama-server, and fetches the bundled setup-time Python, so the
 # resulting installer needs none of them pre-installed on the end user's
 # machine — see backend/hearth-backend.spec, scripts/build_backend.sh/.ps1,
-# scripts/fetch_llama_cpp.py, and scripts/fetch_setup_python.py.
+# scripts/fetch_llama_cpp.py, and scripts/fetch_setup_python.py. Both
+# fetch scripts' platform->asset maps were extended for every new
+# OS+arch combination here, verified against each upstream release's
+# actual asset list (not assumed) before adding.
 on:
   push:
     tags: ["v*"]
@@ -40,15 +54,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-24.04, windows-latest, macos-latest]
+        platform:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+          - windows-latest
+          - windows-11-arm
+          - macos-latest
+          - macos-15-large
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
 
-      # Linux-only: the same webkit2gtk/gtk3/glib dev packages documented
-      # in desktop/src-tauri/README.md's "Linux build prerequisites".
+      # Both Linux runners (x64 and arm64) need these — the same
+      # webkit2gtk/gtk3/glib dev packages documented in
+      # desktop/src-tauri/README.md's "Linux build prerequisites".
       - name: Install Linux system dependencies
-        if: matrix.platform == 'ubuntu-24.04'
+        if: contains(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
@@ -87,11 +108,11 @@ jobs:
       # Populates desktop/src-tauri/resources/hearth-backend/ — thin build,
       # see backend/hearth-backend.spec and scripts/build_backend.sh/.ps1.
       - name: Freeze backend (Linux/macOS)
-        if: matrix.platform != 'windows-latest'
+        if: "!contains(matrix.platform, 'windows')"
         run: bash scripts/build_backend.sh
 
       - name: Freeze backend (Windows)
-        if: matrix.platform == 'windows-latest'
+        if: contains(matrix.platform, 'windows')
         run: pwsh scripts/build_backend.ps1
 
       # Populates desktop/src-tauri/resources/llama-cpp/ — CPU-only on

@@ -29,10 +29,15 @@ LLAMA_CPP_DIR = RESOURCES_DIR / "llama-cpp"
 
 # Verified against the actual ggml-org/llama.cpp release (July 2026) —
 # see the module docstring for what's deliberately not bundled (GPU builds).
+# platform.machine() reports "aarch64" on Linux ARM64 and "ARM64" on
+# Windows ARM64 — different strings for the same architecture family, a
+# known cross-platform quirk (macOS instead reports "arm64", lowercase).
 LLAMA_CPP_TAG = "b10016"
 _ASSET_BY_PLATFORM = {
     ("Linux", "x86_64"): f"llama-{LLAMA_CPP_TAG}-bin-ubuntu-x64.tar.gz",
+    ("Linux", "aarch64"): f"llama-{LLAMA_CPP_TAG}-bin-ubuntu-arm64.tar.gz",
     ("Windows", "AMD64"): f"llama-{LLAMA_CPP_TAG}-bin-win-cpu-x64.zip",
+    ("Windows", "ARM64"): f"llama-{LLAMA_CPP_TAG}-bin-win-cpu-arm64.zip",
     ("Darwin", "arm64"): f"llama-{LLAMA_CPP_TAG}-bin-macos-arm64.tar.gz",
     ("Darwin", "x86_64"): f"llama-{LLAMA_CPP_TAG}-bin-macos-x64.tar.gz",
 }
