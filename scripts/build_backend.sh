@@ -36,6 +36,27 @@ case "$TIER" in
   *) echo "Unknown tier '$TIER' — expected 'gpu' or 'cpu'" >&2; exit 1 ;;
 esac
 echo "Using tier requirements: $TIER_REQ"
+
+# torch's default Linux wheel declares nvidia-cudnn-cu13/nvidia-cusparselt-
+# cu13/nvidia-nccl-cu13/nvidia-nvshmem-cu13 as hard dependencies whenever
+# platform_system == "Linux" (verified via PyPI metadata) — each of those
+# ships hundreds of MB to 1GB+ of CUDA runtime binaries this app never
+# uses (no GPU acceleration is bundled anywhere in this project; see
+# desktop/src-tauri/README.md's "GPU acceleration isn't bundled" note).
+# There's no equivalent platform_system == "Windows"/"Darwin" requirement
+# in torch's own metadata, so this is Linux-only — confirmed by the actual
+# CI asset sizes: this pushed the Linux GPU .deb well past GitHub's 2GB
+# release-asset limit while the equivalent Windows/macOS GPU installers
+# stayed under 450MB. Installing the dedicated CPU-only build first keeps
+# the subsequent `-r requirements-gpu.txt` install (torch is one of
+# parler-tts's own unconstrained transitive deps) from resolving the
+# CUDA-pulling default from PyPI instead — verified with a real `uv pip
+# install --target ... --index-url https://download.pytorch.org/whl/cpu
+# torch`, which resolves to `torch==2.13.0+cpu` with zero nvidia-*/triton
+# packages pulled in, vs. the plain-PyPI resolution which pulls all four.
+if [[ "$TIER_REQ" == "requirements-gpu.txt" && "$(uname)" == "Linux" ]]; then
+  uv pip install --quiet --system --index-url https://download.pytorch.org/whl/cpu torch
+fi
 # No --only-binary=:all: here (unlike the common install above):
 # requirements-gpu.txt's parler-tts and its descript-audiotools-unofficial/
 # descript-audio-codec-unofficial dependencies only publish sdists on PyPI

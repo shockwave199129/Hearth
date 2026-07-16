@@ -41,19 +41,29 @@ jobs:
         include:
           # extraConfig: additional --config JSON fields merged in below,
           # as a leading-comma fragment (empty string for every row that
-          # doesn't need one). Only the Linux GPU row sets one: Tauri's rpm
-          # bundler (the pure-Rust `rpm` crate, not the system `rpmbuild` —
-          # confirmed via its actual source, so this isn't a dependency-
-          # scanning slowdown) gzip-compresses the entire onedir payload
-          # single-threaded with zero progress output, and the GPU tier's
-          # torch-heavy bundle (~6GB) made that run past an hour with no
-          # sign of finishing before it was manually cancelled. `.deb`
-          # alone still covers Debian/Ubuntu; only the Linux GPU tier drops
-          # `rpm` — the CPU tier's much smaller bundle keeps it.
+          # doesn't need one). No row currently needs one, but the
+          # mechanism is kept for the next platform-specific override.
+          #
+          # The Linux GPU tier previously dropped `rpm` here (Tauri's rpm
+          # bundler gzip-compressing a multi-GB payload past an hour with
+          # no progress output) and separately failed to upload its `.deb`
+          # (over GitHub's 2GB release-asset limit) — both traced to the
+          # same root cause, not an inherent tier-B/C size difference:
+          # torch's default Linux wheel requires nvidia-cudnn-cu13/
+          # nvidia-cusparselt-cu13/nvidia-nccl-cu13/nvidia-nvshmem-cu13
+          # (hundreds of MB to 1GB+ each of unused CUDA runtime binaries —
+          # this project bundles no GPU acceleration anywhere) whenever
+          # platform_system == "Linux", verified via torch's own PyPI
+          # metadata. build_backend.sh now installs the dedicated CPU-only
+          # torch build first specifically to avoid this — see its own
+          # comment for the verified before/after. Re-enabled `rpm` here on
+          # that basis; if the next real run shows it's still slow/over
+          # the size limit, that assumption was wrong and this needs
+          # revisiting.
           - platform: ubuntu-24.04
             tier: gpu
             productName: "Hearth-GPU"
-            extraConfig: ',"bundle":{"targets":["deb"]}'
+            extraConfig: ""
           - platform: ubuntu-24.04
             tier: cpu
             productName: "Hearth-CPU"
