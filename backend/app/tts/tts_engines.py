@@ -32,8 +32,30 @@ class ParlerEngine(TtsEngine):
 
     def __init__(self, device: str):
         # deferred: heavy torch/transformers import
+        import torch
         from parler_tts import ParlerTTSForConditionalGeneration
         from transformers import AutoTokenizer
+
+        # tier_manager.py's tier pick is based on detected hardware (VRAM),
+        # not on whether the installed `torch` build actually has CUDA
+        # support — plain `pip install torch` on Windows/Linux can resolve
+        # to a CPU-only build depending on index/platform (see
+        # requirements-gpu.txt's own comment on this exact gap for Linux
+        # CI). Rather than hard-crash with "Torch not compiled with CUDA
+        # enabled" partway through loading the model, fall back to CPU and
+        # say why — the tier's hardware detection was right, the torch
+        # install just doesn't match it.
+        if device == "cuda" and not torch.cuda.is_available():
+            import logging
+
+            logging.getLogger("hearth").warning(
+                "Tier detection picked device=cuda but torch.cuda.is_available() "
+                "is False — falling back to CPU. Install a CUDA-enabled torch "
+                "build (e.g. `pip install torch --index-url "
+                "https://download.pytorch.org/whl/cu121`, matching your GPU "
+                "driver) to actually use the GPU."
+            )
+            device = "cpu"
 
         self._device = device
         self._model = ParlerTTSForConditionalGeneration.from_pretrained(
