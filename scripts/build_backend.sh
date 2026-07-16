@@ -54,8 +54,20 @@ echo "Using tier requirements: $TIER_REQ"
 # install --target ... --index-url https://download.pytorch.org/whl/cpu
 # torch`, which resolves to `torch==2.13.0+cpu` with zero nvidia-*/triton
 # packages pulled in, vs. the plain-PyPI resolution which pulls all four.
+#
+# torchaudio has to come from the same CPU index alongside torch, not just
+# torch alone — parler-tts pulls it in transitively (parler_tts -> dac ->
+# audiotools -> torchaudio), and torchaudio ships its own native extension
+# (_torchaudio.abi3.so) that's built against a specific torch ABI. Pinning
+# only `torch` to the CPU build while leaving torchaudio to resolve from
+# plain PyPI (a build made against a different torch ABI) breaks that
+# extension's load at import time — reproduced for real: `import
+# parler_tts` failed with "OSError: Could not load this library:
+# .../torchaudio/lib/_torchaudio.abi3.so" until torchaudio was pinned to
+# the matching +cpu build here too, verified by re-running the same import
+# successfully afterward.
 if [[ "$TIER_REQ" == "requirements-gpu.txt" && "$(uname)" == "Linux" ]]; then
-  uv pip install --quiet --system --index-url https://download.pytorch.org/whl/cpu torch
+  uv pip install --quiet --system --index-url https://download.pytorch.org/whl/cpu torch torchaudio
 fi
 # No --only-binary=:all: here (unlike the common install above):
 # requirements-gpu.txt's parler-tts and its descript-audiotools-unofficial/
