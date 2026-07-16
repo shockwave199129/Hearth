@@ -1,26 +1,29 @@
 # Shared across every hardware tier — see requirements-gpu.txt (tier S/A,
-# Chatterbox TTS) and requirements-cpu.txt (tier B/C, Kokoro TTS) for the
-# tier-specific pieces. Split this way because chatterbox-tts and
-# kokoro-onnx have directly incompatible numpy requirements (verified: the
-# ranges don't overlap at all) — since tier_manager.py already picks
-# exactly one TTS engine per install based on detected hardware, no
-# environment ever needs both, so the split just matches that reality
-# instead of forcing one impossible combined environment.
-fastapi==0.115.*
-uvicorn[standard]==0.32.*
-websockets==13.*
+# Parler-TTS-Tiny-v1, torch/transformers-based) and requirements-cpu.txt
+# (tier B/C, Kokoro TTS via onnxruntime directly, no torch at all) for the
+# tier-specific pieces. Split this way to keep tier B/C's low-resource
+# machines from having to install the GPU tier's much heavier
+# torch/transformers stack for an engine they'll never use — since
+# tier_manager.py already picks exactly one TTS engine per install based on
+# detected hardware, no environment ever needs both.
+fastapi==0.139.*
+uvicorn[standard]==0.51.*
+websockets==16.*
 pydantic==2.*
 PyYAML==6.*   # skills library front-matter parsing (app/skills/loader.py)
-psutil==6.*
-requests==2.32.*
+# psutil==7.0.0 removed Process.memory_info_ex() and renamed
+# Process.connections() -> Process.net_connections() — neither used here
+# (detect.py only calls virtual_memory()/cpu_count()), so the bump is safe.
+psutil==7.*
+requests==2.34.*
 sounddevice==0.5.*
 
 # onnx is required for onnxruntime.quantization submodule import
-onnx==1.16.*
+onnx==1.22.*
 
 # Encryption at rest — OS-keychain key management + DB-level encryption.
 keyring==25.*
-cryptography==43.*
+cryptography>=43.0
 
 # SQLCipher 4.x — DB-level encryption of profile.db. The historical
 # `sqlcipher3-binary` distribution was discontinued on PyPI, so pin the
@@ -39,7 +42,7 @@ sqlcipher3==0.6.*
 # this used to pin no longer installs at all — that repo was rewritten into
 # this much larger project and dropped its setup.py/pyproject.toml. Verified
 # working end-to-end against 0.0.68 (see app/stt/moonshine_engine.py).
-moonshine-voice==0.0.68
+moonshine-voice>=0.0.68
 
 # LLM inference server — llama.cpp's `llama-server` binary is NOT installed via pip.
 # Build/install separately (https://github.com/ggerganov/llama.cpp) and make sure
@@ -62,14 +65,20 @@ langchain-openai>=1.0,<2.0
 
 # Long-term memory — Chroma is plain local file storage (no server process
 # of its own), see db/chroma_client.py.
-chromadb==0.5.*
+chromadb>=1.5
 
-# Model downloads — scripts/setup.py uses this directly to pull GGUF files
-# from HuggingFace. Deliberately unpinned: hf_hub_download() (the only API
-# used) is stable across a wide version range, and both tier-specific TTS
-# stacks pull in their own huggingface_hub transitively with narrower,
-# mutually-incompatible constraints (chatterbox-tts wants >=1.3.0,<2.0 via
-# transformers 5.2.0; kokoro-onnx's chain wants <1.0) — pinning here would
-# fight whichever one wins in a given tier's install instead of just
-# deferring to it.
+# chromadb>=1.5's own declared constraint (verified via PyPI metadata,
+# 1.5.9) is numpy>=1.22.5 with no upper bound, so numpy>=2.0.0 below is
+# fine. Pinned here rather than per-tier since neither tier's TTS stack
+# constrains numpy either: parler-tts and ttstokenizer/onnxruntime
+# (requirements-gpu.txt/-cpu.txt) both leave it unconstrained on their own.
+numpy>=2.0.0
+
+# Model downloads — scripts/setup.py and tts_engines.py's KokoroEngine both
+# use this directly (hf_hub_download()) to pull model files from
+# HuggingFace. Deliberately unpinned: that's the only API used, and it's
+# stable across a wide version range — while parler-tts's pinned
+# transformers==4.46.1 pulls in its own, narrower huggingface_hub
+# constraint transitively on the GPU tier, pinning here would fight
+# whichever one wins in that tier's install instead of just deferring to it.
 huggingface_hub

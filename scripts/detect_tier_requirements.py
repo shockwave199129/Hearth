@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Prints which of backend/requirements-{gpu,cpu}.txt matches this machine's
-detected tier, so build_backend.sh/.ps1 can install the right one before
-freezing. Not "gpu" as in "has a GPU" — it's "S/A" (chatterbox-tts, run on
-GPU or CPU per tier.tts_engine) vs "B/C" (kokoro-onnx) — see
-backend/requirements-gpu.txt's docstring-comment for why the split exists.
+detected tier — used by build_backend.sh/.ps1's local-run fallback when no
+explicit tier is passed (CI always passes one explicitly, see build.yml).
+Not "gpu" as in "has a GPU" — it's "S/A" (parler-tts, run on GPU or CPU per
+tier.tts_engine) vs "B/C" (Kokoro via onnxruntime) — see
+backend/requirements-common.txt's docstring-comment for why the split
+exists.
 """
 import sys
 from pathlib import Path

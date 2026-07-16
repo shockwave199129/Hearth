@@ -16,7 +16,7 @@ packaged. `desktop/src-tauri` wraps the built frontend and spawns the
 backend as a child process for a double-clickable desktop build.
 
 ```
-mic → Moonshine (STT) → agent (LFM2.5 via llama-server) → Chatterbox/Kokoro (TTS) → speaker
+mic → Moonshine (STT) → agent (LFM2.5 via llama-server) → Parler-TTS-Tiny-v1/Kokoro (TTS) → speaker
 ```
 
 ## The agent

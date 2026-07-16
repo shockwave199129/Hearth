@@ -5,7 +5,7 @@ your own machine. No data leaves your device except one narrow, explicitly
 consented path (crisis escalation) — see [`docs/privacy.md`](docs/privacy.md).
 
 ```
-mic → Moonshine (STT) → LFM2.5 via a LangChain agent → Chatterbox/Kokoro (TTS) → speaker
+mic → Moonshine (STT) → LFM2.5 via a LangChain agent → Parler-TTS-Tiny-v1/Kokoro (TTS) → speaker
 ```
 
 For the full design history and rationale, see
@@ -14,7 +14,7 @@ For how the app actually works today, see [`docs/architecture.md`](docs/architec
 
 ## Stack
 
-LFM2.5-1.2B (LLM, via `llama-server`) · Moonshine (STT) · Chatterbox
+LFM2.5-1.2B (LLM, via `llama-server`) · Moonshine (STT) · Parler-TTS-Tiny-v1
 with a Kokoro-82M fallback (TTS) · EmbeddingGemma-300M + Chroma (long-term
 memory) · LangChain `create_agent` (tool-calling agent + middleware) ·
 FastAPI (backend) · React/Vite (frontend) · Tauri (desktop packaging).
@@ -49,7 +49,7 @@ with a smaller model and a lighter TTS engine.
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-common.txt
-pip install -r requirements-gpu.txt   # tier S/A — Chatterbox TTS
+pip install -r requirements-gpu.txt   # tier S/A — Parler-TTS-Tiny-v1
 # or: pip install -r requirements-cpu.txt   # tier B/C — Kokoro TTS
 ```
 
@@ -63,9 +63,8 @@ python ../scripts/setup.py
 ```
 
 This pulls the right LFM2.5 GGUF quantization and the EmbeddingGemma GGUF
-for every tier, plus Kokoro's ONNX files on tier B/C. Moonshine and
-Chatterbox auto-download their own weights on first use — nothing to do
-for those.
+for every tier. Moonshine, Parler-TTS-Tiny-v1, and Kokoro all auto-download
+their own weights on first use — nothing to do for those.
 
 Run the backend:
 

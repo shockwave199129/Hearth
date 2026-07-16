@@ -47,20 +47,6 @@ Manage memory quietly in the background — don't narrate memory operations
 to the user or announce what you're saving/updating/removing unless they
 directly ask what you remember."""
 
-# Chatterbox-Turbo-only (see tts/chatterbox_engine.py) — Kokoro (tiers B/C)
-# has no equivalent and would just speak these tags as literal text, so this
-# must never be appended to the prompt on a Kokoro tier. Only these three
-# tags are documented by resemble-ai/chatterbox as actually recognized;
-# anything else (e.g. [sigh], [gasp]) is unverified and would likely just be
-# read aloud as literal text instead of performed, so deliberately omitted.
-CHATTERBOX_STYLE_SYSTEM_PROMPT_ADDITION = """
-Your voice engine understands three inline tags: [laugh], [chuckle], and
-[cough], written directly in your reply exactly like that. Use one at most
-per reply, only where it's genuinely natural (e.g. "That's rough [chuckle]
-but I get it"), never to perform an emotion that isn't there. Most replies
-should have none at all — emotion should come through in your wording and
-pacing, not by using these on every turn."""
-
 # See project-plan.md §6 — pointer only, never the library content itself.
 SKILLS_SYSTEM_PROMPT_ADDITION = """
 You have skills tools (list_skills, get_skill) — reference material on

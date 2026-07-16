@@ -1,12 +1,13 @@
-# Tier B/C — Kokoro-82M TTS fallback (tts/chatterbox_engine.py's
+# Tier B/C — Kokoro-82M TTS fallback (tts/tts_engines.py's
 # KokoroEngine). See requirements-common.txt for why this is split from
 # requirements-gpu.txt at all.
 -r requirements-common.txt
 
-# kokoro-onnx==0.4.6+ requires numpy>=2.0.2 — verified via its own
-# dependency metadata. Pin to <0.4.6 to stay compatible with chromadb==0.5.*
-# (which requires numpy<2.0.0). onnxruntime>=1.20.1 works with both numpy
-# ranges; 1.21.0+ adds numpy 2.x support but isn't required here.
-numpy<2.0.0
+# NeuML/kokoro-fp16-onnx (huggingface.co/NeuML/kokoro-fp16-onnx), used
+# directly via onnxruntime + ttstokenizer per that model card's ONNX
+# Runtime usage example — not its txtai pipeline alternative, whose base
+# install pulls in torch/transformers/faiss-cpu regardless (deliberately
+# NOT used here, to keep this tier's footprint the lightweight
+# onnxruntime-only one tier B/C's low-resource machines actually need).
 onnxruntime>=1.20.1
-kokoro-onnx<0.4.6,>=0.4.0
+ttstokenizer>=1.1.0

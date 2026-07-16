@@ -9,27 +9,13 @@
 # onefile's per-launch self-extraction cost and is far easier to debug
 # missing-library issues in (you can just look in the output folder).
 #
-# VERIFIED FOR REAL (not just read/inspected), both tiers: this spec has
-# been run through actual `pyinstaller` builds twice — once against
-# requirements-cpu.txt (kokoro-onnx, no chatterbox-tts installed, ~1.9GB
-# output) and once against requirements-gpu.txt (chatterbox-tts==0.1.7
-# installed, ~6.0GB output, mostly torch). Both builds completed
-# Analysis/PYZ/EXE/COLLECT successfully, and both frozen executables were
-# launched directly: uvicorn started, the FastAPI startup event fired,
-# hardware-tier detection ran, and each reached exactly the expected
-# failure point for this sandbox — `FileNotFoundError: llama-server` (no
-# llama-server binary present here) — meaning every Python import in the
-# chain up to that point genuinely works frozen, including
-# chromadb/onnxruntime/torch/sqlcipher3/moonshine_voice/chatterbox/
-# kokoro_onnx/the whole langchain family.
-#
-# TIER-AWARE: requirements-gpu.txt (chatterbox-tts, tier S/A) and
-# requirements-cpu.txt (kokoro-onnx, tier B/C) are mutually incompatible in
-# one Python environment (conflicting numpy pins — see
-# requirements-common.txt), so a given frozen build's venv only ever has
-# ONE of the two installed. This spec detects which one via a real import
-# probe (below) rather than assuming both are present, so collect_all()/
-# hiddenimports only reference the package that's actually installed.
+# TIER-AWARE: requirements-gpu.txt (parler-tts, tier S/A, torch-based) and
+# requirements-cpu.txt (NeuML/kokoro-fp16-onnx via onnxruntime +
+# ttstokenizer, tier B/C, no torch) are never both installed in one
+# environment — see requirements-common.txt for why. This spec detects
+# which one is present via a real import probe (below) rather than
+# assuming, so collect_all()/hiddenimports only reference the package
+# that's actually installed.
 from pathlib import Path
 
 # Import the core PyInstaller building classes required for the spec.
@@ -54,28 +40,27 @@ APP_DIR = BACKEND_DIR / "app"
 datas = [
     (str(APP_DIR / "skills" / "library"), "app/skills/library"),
     (str(APP_DIR / "safety" / "safety_audio"), "app/safety/safety_audio"),
-    (str(APP_DIR / "tts" / "voice_profiles"), "app/tts/voice_profiles"),
 ]
 
 # Which TTS stack is actually installed in this build's venv — real import
 # probe, not a guess, since requirements-gpu.txt/-cpu.txt are never both
 # installed at once (see note above).
 try:
-    import chatterbox  # noqa: F401
-    _HAS_CHATTERBOX = True
+    import parler_tts  # noqa: F401
+    _HAS_PARLER = True
 except ImportError:
-    _HAS_CHATTERBOX = False
+    _HAS_PARLER = False
 
 try:
-    import kokoro_onnx  # noqa: F401
+    import ttstokenizer  # noqa: F401
     _HAS_KOKORO = True
 except ImportError:
     _HAS_KOKORO = False
 
-if _HAS_CHATTERBOX == _HAS_KOKORO:
+if _HAS_PARLER == _HAS_KOKORO:
     raise RuntimeError(
-        "Expected exactly one of chatterbox-tts/kokoro-onnx installed "
-        f"(got chatterbox={_HAS_CHATTERBOX}, kokoro_onnx={_HAS_KOKORO}) — "
+        "Expected exactly one of parler-tts/ttstokenizer installed "
+        f"(got parler_tts={_HAS_PARLER}, ttstokenizer={_HAS_KOKORO}) — "
         "install requirements-gpu.txt or requirements-cpu.txt, not both/neither."
     )
 
@@ -100,12 +85,10 @@ hiddenimports = [
     "moonshine_voice",
     "moonshine_voice.transcriber",
 ]
-if _HAS_CHATTERBOX:
-    # tts_turbo only — tts/chatterbox_engine.py uses ChatterboxTurboTTS
-    # exclusively (the non-Turbo class is never imported anywhere).
-    hiddenimports += ["chatterbox.tts_turbo"]
+if _HAS_PARLER:
+    hiddenimports += ["parler_tts"]
 if _HAS_KOKORO:
-    hiddenimports += ["kokoro_onnx"]
+    hiddenimports += ["ttstokenizer"]
 
 # Packages with native extensions / plugin-style dynamic imports that
 # PyInstaller's default analysis reliably misses — collect_all() pulls in
@@ -119,10 +102,16 @@ _COLLECT_ALL_PACKAGES = [
     "langchain_openai",
     "langgraph",
 ]
-if _HAS_CHATTERBOX:
-    _COLLECT_ALL_PACKAGES += ["torch", "chatterbox"]
+if _HAS_PARLER:
+    _COLLECT_ALL_PACKAGES += ["torch", "parler_tts"]
 if _HAS_KOKORO:
-    _COLLECT_ALL_PACKAGES += ["kokoro_onnx"]
+    # ttstokenizer pulls in nltk, which normally fetches its tokenizer data
+    # packages (e.g. punkt) on first use over the network rather than
+    # shipping them as package data — collect_all() only grabs what's
+    # already installed as package data, so this has NOT been verified to
+    # cover nltk's runtime data fetch inside a frozen, possibly offline
+    # build. Flagged here rather than assumed to just work.
+    _COLLECT_ALL_PACKAGES += ["ttstokenizer"]
 
 # NOTE: The collection of package data is performed after the Analysis
 # step (which defines the `a` object) to avoid referencing `a` before it is

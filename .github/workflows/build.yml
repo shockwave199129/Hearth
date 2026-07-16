@@ -26,16 +26,37 @@ jobs:
   build:
     env:
       ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+    # Two full builds per OS — one per hardware tier (see
+    # backend/requirements-gpu.txt: tier S/A, Parler-TTS-Tiny-v1, vs
+    # requirements-cpu.txt: tier B/C, Kokoro) — rather than one build whose
+    # TTS engine is autodetected from the CI runner's own hardware, which
+    # has nothing to do with the hardware of whoever installs the result.
+    # productName is overridden per tier so both installers can coexist as
+    # distinct assets on the same GitHub release instead of colliding.
+    # Arch-specific runners (ARM64 Windows/Linux, Intel vs Apple Silicon
+    # macOS) are a deliberate follow-up, not covered by this matrix yet.
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: ubuntu-24.04
-            args: ""
+            tier: gpu
+            productName: "Hearth (GPU)"
+          - platform: ubuntu-24.04
+            tier: cpu
+            productName: "Hearth (CPU)"
           - platform: windows-latest
-            args: ""
+            tier: gpu
+            productName: "Hearth (GPU)"
+          - platform: windows-latest
+            tier: cpu
+            productName: "Hearth (CPU)"
           - platform: macos-latest
-            args: ""
+            tier: gpu
+            productName: "Hearth (GPU)"
+          - platform: macos-latest
+            tier: cpu
+            productName: "Hearth (CPU)"
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -81,22 +102,23 @@ jobs:
 
       # Populates desktop/src-tauri/resources/hearth-backend/ — see
       # backend/hearth-backend.spec for what's bundled and what's
-      # actually been verified vs. still-risky (chatterbox-tts in
-      # particular — flagged there, not glossed over).
+      # actually been verified vs. still-risky. matrix.tier picks
+      # requirements-gpu.txt/-cpu.txt explicitly (see build_backend.sh/.ps1)
+      # rather than autodetecting the runner's own hardware.
       - name: Freeze backend (Linux/macOS)
         if: matrix.platform != 'windows-latest'
-        run: bash scripts/build_backend.sh
+        run: bash scripts/build_backend.sh ${{ matrix.tier }}
 
       - name: Freeze backend (Windows)
         if: matrix.platform == 'windows-latest'
-        run: pwsh scripts/build_backend.ps1
+        run: pwsh scripts/build_backend.ps1 -Tier ${{ matrix.tier }}
 
       # Populates desktop/src-tauri/resources/llama-cpp/ — CPU-only on
       # Linux/Windows, Metal-included on macOS (its only variant). See
       # scripts/fetch_llama_cpp.py for exactly what's and isn't bundled.
       - name: Fetch bundled llama-server
         run: |
-          pip install --quiet requests
+          uv pip install --quiet --system requests
           python scripts/fetch_llama_cpp.py
 
       - name: Build
@@ -117,4 +139,9 @@ jobs:
           releaseName: "Hearth ${{ github.ref_name }}"
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
+          # productName override distinguishes the GPU/CPU installers as
+          # separate assets on the shared draft release above (same
+          # tagName/releaseName for every matrix job) — without it, both
+          # tiers on the same OS would bundle to identical filenames and
+          # the second upload would collide with the first.
+          args: --config "{\"productName\":\"${{ matrix.productName }}\"}"

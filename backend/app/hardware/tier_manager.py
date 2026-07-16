@@ -12,12 +12,12 @@ class TierConfig:
     llm_gguf: str
     n_gpu_layers: int
     stt_model: str
-    tts_engine: str  # "chatterbox_gpu" | "chatterbox_cpu" | "kokoro"
+    tts_engine: str  # "parler_gpu" | "parler_cpu" | "kokoro"
 
 
 _TIER_TABLE = {
-    "S": TierConfig("S", "lfm2.5-1.2b-bf16.gguf", 99, "moonshine-base", "chatterbox_gpu"),
-    "A": TierConfig("A", "lfm2.5-1.2b-q8_0.gguf", 99, "moonshine-base", "chatterbox_cpu"),
+    "S": TierConfig("S", "lfm2.5-1.2b-bf16.gguf", 99, "moonshine-base", "parler_gpu"),
+    "A": TierConfig("A", "lfm2.5-1.2b-q8_0.gguf", 99, "moonshine-base", "parler_cpu"),
     "B": TierConfig("B", "lfm2.5-1.2b-q6_k.gguf", 0, "moonshine-tiny", "kokoro"),
     "C": TierConfig("C", "lfm2.5-1.2b-q4_k_m.gguf", 0, "moonshine-tiny", "kokoro"),
 }

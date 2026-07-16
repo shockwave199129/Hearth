@@ -23,14 +23,20 @@ fast iteration, assumes a dev Python env, unchanged from earlier passes.
   (`backend/app/config.py` already reads this).
 
 Backend dependencies are split by tier — `backend/requirements-gpu.txt`
-(tier S/A, Chatterbox TTS) vs `backend/requirements-cpu.txt` (tier B/C,
-Kokoro TTS) — because chatterbox-tts and kokoro-onnx pin mutually
-incompatible numpy ranges, so no single environment can have both
-installed. `scripts/build_backend.sh`/`.ps1` detect which one applies
-(`scripts/detect_tier_requirements.py`) and install only that one before
-freezing; `hearth-backend.spec` probes which package actually got
-installed (real `import` check, not a guess) and only references that
-tier's `collect_all()`/hidden-imports.
+(tier S/A, Parler-TTS-Tiny-v1, torch/transformers-based) vs
+`backend/requirements-cpu.txt` (tier B/C, Kokoro TTS via onnxruntime +
+ttstokenizer directly against NeuML/kokoro-fp16-onnx, no torch at all) — to
+keep tier B/C's low-resource machines from installing the GPU tier's much
+heavier stack for an engine they'll never use.
+`.github/workflows/build.yml`'s matrix now passes the tier
+explicitly (one CI job per OS per tier, six total) rather than
+autodetecting the *build* machine's hardware, which has nothing to do with
+whoever installs the result; `scripts/detect_tier_requirements.py`'s
+autodetection still backs a local run with no tier argument.
+`scripts/build_backend.sh`/`.ps1` install only the requested tier's
+requirements before freezing; `hearth-backend.spec` probes which package
+actually got installed (real `import` check, not a guess) and only
+references that tier's `collect_all()`/hidden-imports.
 
 ## What this does NOT do yet (real gaps, not oversights)
 
@@ -86,14 +92,18 @@ either:
 
 **Option A — CI (recommended, no extra machines needed).**
 `.github/workflows/build.yml` matrixes across
-`ubuntu-24.04`/`windows-latest`/`macos-latest` using the official
-[`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action).
-Each job installs the Linux system deps above (Linux only), freezes the
-backend, fetches the bundled `llama-server`, and produces all six bundle
-files in one run. Push a `v*` tag (or run it manually via "Run workflow")
-— it opens a draft GitHub Release with every installer attached. Needs a
-real git repo pushed to GitHub to actually run (this project doesn't have
-one yet).
+`ubuntu-24.04`/`windows-latest`/`macos-latest` **and** the two hardware
+tiers (GPU/tier S-A vs CPU/tier B-C) — six jobs total. Each job installs
+the Linux system deps above (Linux only), freezes the backend against its
+assigned tier's requirements file, fetches the bundled `llama-server`, and
+builds via the official
+[`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action)
+with a tier-specific `productName` override (`Hearth (GPU)` /
+`Hearth (CPU)`) so both tiers' installers land as distinct assets instead
+of colliding. Push a `v*` tag (or run it manually via "Run workflow") — it
+opens a draft GitHub Release with every installer from every job attached.
+Needs a real git repo pushed to GitHub to actually run (this project
+doesn't have one yet).
 
 **Option B — build manually on each OS:**
 
@@ -118,16 +128,18 @@ built it). Before real distribution you need:
   packages.
 
 None of the CI matrix / real Windows/macOS builds can be verified in this
-sandbox (no Windows/macOS runners here). What *has* been verified for
-real, directly in this sandbox: the PyInstaller freeze builds and the
-frozen executable actually starts up correctly for **both** tiers —
-once against `requirements-cpu.txt` (kokoro-onnx, ~1.9GB output) and once
-against `requirements-gpu.txt` (chatterbox-tts==0.1.7, ~6.0GB output,
-`torch==2.6.0+cu124`) — in each case reaching exactly the expected
-failure point for this sandbox (`llama-server` not on `PATH`), meaning
-every real import in the chain works frozen; the `llama-server`
-download/extraction genuinely works and the extracted binary runs with
-`LD_LIBRARY_PATH` pointed at its own directory (exactly what `main.rs`
-sets up); `cargo check` on `main.rs` resolves its dependency graph
-correctly (blocked from finishing only by the same pre-existing Linux
-system-library gap noted above, not by anything in this change).
+sandbox (no Windows/macOS runners here). Neither tier's PyInstaller freeze
+has been re-verified since the TTS engine swap that replaced
+Chatterbox-Turbo with Parler-TTS-Tiny-v1 (tier S/A) and the third-party
+`kokoro-onnx` port with NeuML/kokoro-fp16-onnx via onnxruntime +
+ttstokenizer (tier B/C) — the prior ~1.9GB/kokoro-onnx verified-build claim
+this section used to make no longer applies to either tier; no output-size
+or import-chain claim should be assumed to hold until a real `pyinstaller`
+run against each of
+`requirements-gpu.txt`/`requirements-cpu.txt` is done again. Separately,
+the `llama-server` download/extraction genuinely works and the extracted
+binary runs with `LD_LIBRARY_PATH` pointed at its own directory (exactly
+what `main.rs` sets up); `cargo check` on `main.rs` resolves its
+dependency graph correctly (blocked from finishing only by the same
+pre-existing Linux system-library gap noted above, not by anything in
+this change).

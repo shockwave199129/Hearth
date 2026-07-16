@@ -1,6 +1,6 @@
 """FastAPI app + websocket entrypoint, and a `--cli` mode that runs the loop
 directly against the local mic/speaker (no frontend needed to validate
-Phase 1: mic -> Moonshine -> LFM2.5 -> Chatterbox -> speaker).
+Phase 1: mic -> Moonshine -> LFM2.5 -> Parler-TTS/Kokoro -> speaker).
 """
 
 import argparse
@@ -29,7 +29,6 @@ from app.checkin.tools import make_tools as make_checkin_tools
 from app.config import (
     APP_HOST,
     APP_PORT,
-    CHATTERBOX_STYLE_SYSTEM_PROMPT_ADDITION,
     CHECKIN_PROMPT_TEMPLATE,
     MEMORY_SYSTEM_PROMPT_ADDITION,
     SAFETY_AUDIO_PATH,
@@ -57,7 +56,7 @@ from app.safety import crisis_detector, escalation
 from app.skills.loader import get_skill, load_catalog
 from app.skills.tools import SKILL_TOOLS
 from app.stt.moonshine_engine import MoonshineEngine
-from app.tts.chatterbox_engine import get_tts_engine
+from app.tts.tts_engines import get_tts_engine
 
 logger = logging.getLogger("hearth")
 
@@ -158,11 +157,6 @@ class Pipeline:
             + MEMORY_SYSTEM_PROMPT_ADDITION
             + SKILLS_SYSTEM_PROMPT_ADDITION
         )
-        # Only Chatterbox-Turbo (tiers S/A) interprets these tags — Kokoro
-        # (tiers B/C) would just speak them as literal text, so this must
-        # stay tier-gated rather than joining the universal prompt above.
-        if self.tier.tts_engine in ("chatterbox_gpu", "chatterbox_cpu"):
-            self.system_prompt += CHATTERBOX_STYLE_SYSTEM_PROMPT_ADDITION
         self.agent = create_agent(
             model=self.chat_model,
             tools=self._build_tools(profile.user_id),
