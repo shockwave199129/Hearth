@@ -3,9 +3,14 @@
 # at all.
 -r requirements-common.txt
 
-# Installed from source (HF's own quickstart recommends this over the
-# 0.2.3 PyPI release) rather than a version pin — no wheel is published for
-# a git ref, so this line has no --only-binary=:all: candidate; see
-# build_backend.sh/.ps1, which drop that flag specifically for this file's
-# install step (it still applies to requirements-common.txt above).
-parler-tts @ git+https://github.com/huggingface/parler-tts.git
+# Installing from git+https://github.com/huggingface/parler-tts.git (as HF's
+# own quickstart recommends) was tried and reverted: HEAD's setup.py pins
+# the plain `descript-audiotools`/`descript-audio-codec` packages, which
+# drag in librosa==0.11.0 -> numba==0.53.1 -> llvmlite==0.36.0 — and
+# llvmlite 0.36 only builds on Python <3.10, so this failed on every OS in
+# CI (Python 3.12). The 0.2.3 PyPI release instead depends on the
+# `-unofficial` forks (descript-audiotools-unofficial/
+# descript-audio-codec-unofficial), which leave librosa/numba unconstrained
+# and resolve to modern, Python-3.12-compatible versions — verified via
+# PyPI metadata for both.
+parler-tts==0.2.3

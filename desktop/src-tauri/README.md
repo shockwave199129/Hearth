@@ -98,8 +98,11 @@ the Linux system deps above (Linux only), freezes the backend against its
 assigned tier's requirements file, fetches the bundled `llama-server`, and
 builds via the official
 [`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action)
-with a tier-specific `productName` override (`Hearth (GPU)` /
-`Hearth (CPU)`) so both tiers' installers land as distinct assets instead
+with a tier-specific `productName` override (`Hearth-GPU` /
+`Hearth-CPU` — no spaces or parens, since tauri-action's arg tokenizer
+doesn't handle escaped quotes around a space-containing value; a first
+attempt at this using `"Hearth (GPU)"` broke on every job that reached the
+Build step) so both tiers' installers land as distinct assets instead
 of colliding. Push a `v*` tag (or run it manually via "Run workflow") — it
 opens a draft GitHub Release with every installer from every job attached.
 Needs a real git repo pushed to GitHub to actually run (this project

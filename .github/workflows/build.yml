@@ -41,22 +41,22 @@ jobs:
         include:
           - platform: ubuntu-24.04
             tier: gpu
-            productName: "Hearth (GPU)"
+            productName: "Hearth-GPU"
           - platform: ubuntu-24.04
             tier: cpu
-            productName: "Hearth (CPU)"
+            productName: "Hearth-CPU"
           - platform: windows-latest
             tier: gpu
-            productName: "Hearth (GPU)"
+            productName: "Hearth-GPU"
           - platform: windows-latest
             tier: cpu
-            productName: "Hearth (CPU)"
+            productName: "Hearth-CPU"
           - platform: macos-latest
             tier: gpu
-            productName: "Hearth (GPU)"
+            productName: "Hearth-GPU"
           - platform: macos-latest
             tier: cpu
-            productName: "Hearth (CPU)"
+            productName: "Hearth-CPU"
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -143,5 +143,11 @@ jobs:
           # separate assets on the shared draft release above (same
           # tagName/releaseName for every matrix job) — without it, both
           # tiers on the same OS would bundle to identical filenames and
-          # the second upload would collide with the first.
-          args: --config "{\"productName\":\"${{ matrix.productName }}\"}"
+          # the second upload would collide with the first. Single-quoted
+          # (not \"-escaped) and no spaces in productName: tauri-action's
+          # arg tokenizer doesn't understand backslash-escaped quotes, so
+          # the previous `"{\"productName\":\"Hearth (CPU)\"}"` form broke
+          # apart at the first embedded quote — this failed on every job
+          # that reached this step. Single quotes need no inner escaping,
+          # and the missing space means there's nothing left to split on.
+          args: --config '{"productName":"${{ matrix.productName }}"}'

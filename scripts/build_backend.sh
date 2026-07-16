@@ -37,8 +37,10 @@ case "$TIER" in
 esac
 echo "Using tier requirements: $TIER_REQ"
 # No --only-binary=:all: here (unlike the common install above):
-# requirements-gpu.txt installs parler-tts from a git ref, which has no
-# wheel and must be built from source.
+# requirements-gpu.txt's parler-tts and its descript-audiotools-unofficial/
+# descript-audio-codec-unofficial dependencies only publish sdists on PyPI
+# (no wheels), so they must be built from source — verified via PyPI
+# metadata for all three.
 uv pip install --quiet --system -r "$BACKEND_DIR/$TIER_REQ" pyinstaller
 
 cd "$BACKEND_DIR"
