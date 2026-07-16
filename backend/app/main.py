@@ -100,12 +100,12 @@ def _pcm_to_wav_bytes(audio: np.ndarray, sample_rate: int) -> bytes:
 
 app = FastAPI(title="Hearth")
 
-# Dev-only: the Vite dev server (localhost:5173) calls /api/* directly.
+# Dev-only: the Vite dev server (localhost:48176) calls /api/* directly.
 # In production the frontend build is served from this same origin, so this
 # has no effect once the app is packaged.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:48176", "http://127.0.0.1:48176"],
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )

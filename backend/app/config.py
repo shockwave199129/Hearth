@@ -44,18 +44,18 @@ EMBEDDING_MODELS_DIR = MODELS_DIR / "embedding"
 
 LLAMA_SERVER_BIN = os.environ.get("LLAMA_SERVER_BIN", "llama-server")
 LLM_SERVER_HOST = "127.0.0.1"
-LLM_SERVER_PORT = 8001
+LLM_SERVER_PORT = 48174
 
 EMBEDDING_MODEL_FILE = "embeddinggemma-300M-Q8_0.gguf"
 EMBEDDING_SERVER_HOST = "127.0.0.1"
-EMBEDDING_SERVER_PORT = 8002
+EMBEDDING_SERVER_PORT = 48175
 
 # Chroma's own local persistence (chromadb.PersistentClient) — a plain
 # on-disk folder, no server process of its own. See db/chroma_client.py.
 VECTOR_STORE_DIR = DATA_DIR / "vector_store"
 
 APP_HOST = "127.0.0.1"
-APP_PORT = 8000
+APP_PORT = 48173
 
 # Cached hardware/tier detection result, re-checked on every launch (cheap enough,
 # see project-plan.md §2) rather than trusted across app versions/machine changes.
