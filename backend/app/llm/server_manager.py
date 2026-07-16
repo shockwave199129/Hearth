@@ -47,7 +47,10 @@ class LlamaCppProcess:
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             if self._proc.poll() is not None:
-                raise LlmServerError(f"llama-server exited early with code {self._proc.returncode}")
+                output = self._proc.stdout.read().decode(errors="replace") if self._proc.stdout else ""
+                raise LlmServerError(
+                    f"llama-server exited early with code {self._proc.returncode}\n{output}"
+                )
             try:
                 if requests.get(f"{self.base_url}/health", timeout=1).ok:
                     return
