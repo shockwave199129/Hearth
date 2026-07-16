@@ -63,16 +63,30 @@ def _nvidia_driver_cuda_version() -> str | None:
 
 
 def _best_available_index(kind: str, driver_version: str | None, fallback: str) -> str:
-    """Queries download.pytorch.org/whl/torch/'s index page for every
-    published cuXXX or rocmX.Y variant, and picks the highest one that
-    doesn't exceed what the driver reports supporting. `kind` is "cu" or
-    "rocm". Falls back to a hardcoded last-known-good index on any network
-    failure, or if the driver version couldn't be determined."""
-    try:
-        with urllib.request.urlopen("https://download.pytorch.org/whl/torch/", timeout=10) as r:
-            html = r.read().decode()
-    except (urllib.error.URLError, TimeoutError, OSError):
-        return fallback
+    """Queries download.pytorch.org's index pages for both `torch` AND
+    `torchaudio` (installer.py always installs them together — see its own
+    docstring on the ABI-pairing requirement) and picks the highest cuXXX/
+    rocmX.Y variant present in BOTH, that also doesn't exceed what the
+    driver reports supporting. `kind` is "cu" or "rocm". Falls back to a
+    hardcoded last-known-good index on any network failure, or if the
+    driver version couldn't be determined.
+
+    Checking only torch's own index page (an earlier version of this
+    function did) isn't enough — reproduced for real on Windows with an
+    actual RTX 5060: cu132 has a torch build but no torchaudio build for
+    Windows at all, so picking cu132 (torch's own highest available index)
+    made the subsequent `pip install torch torchaudio` fail outright with
+    "No matching distribution found for torchaudio"."""
+    pattern = r"/whl/(cu\d+)/" if kind == "cu" else r"/whl/(rocm[\d.]+)/"
+    candidate_sets = []
+    for package in ("torch", "torchaudio"):
+        try:
+            with urllib.request.urlopen(f"https://download.pytorch.org/whl/{package}/", timeout=10) as r:
+                html = r.read().decode()
+        except (urllib.error.URLError, TimeoutError, OSError):
+            return fallback
+        candidate_sets.append(set(re.findall(pattern, html)))
+    candidates_in_both = candidate_sets[0] & candidate_sets[1]
 
     def _version_tuple(index: str) -> tuple[int, ...]:
         raw = index[len("cu") :] if kind == "cu" else index[len("rocm") :]
@@ -83,12 +97,11 @@ def _best_available_index(kind: str, driver_version: str | None, fallback: str) 
             raw = f"{raw[:-1]}.{raw[-1]}"
         return tuple(int(p) for p in raw.split("."))
 
-    pattern = r"/whl/(cu\d+)/" if kind == "cu" else r"/whl/(rocm[\d.]+)/"
     # Sorted by parsed version, NOT string order — "cu92" (9.2) would
     # otherwise sort after "cu128" (12.8) lexicographically ('9' > '1'),
     # picking a much older index than intended. Caught by actually running
     # this against the real index rather than just reading the logic.
-    candidates = sorted(set(re.findall(pattern, html)), key=_version_tuple)
+    candidates = sorted(candidates_in_both, key=_version_tuple)
     if not candidates:
         return fallback
 
