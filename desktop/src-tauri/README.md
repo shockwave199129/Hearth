@@ -22,21 +22,48 @@ fast iteration, assumes a dev Python env, unchanged from earlier passes.
   llama-server via the `LLAMA_SERVER_BIN` env var
   (`backend/app/config.py` already reads this).
 
-Backend dependencies are split by tier — `backend/requirements-gpu.txt`
-(tier S/A, Parler-TTS-Tiny-v1, torch/transformers-based) vs
-`backend/requirements-cpu.txt` (tier B/C, Kokoro TTS via onnxruntime +
-ttstokenizer directly against NeuML/kokoro-fp16-onnx, no torch at all) — to
-keep tier B/C's low-resource machines from installing the GPU tier's much
-heavier stack for an engine they'll never use.
-`.github/workflows/build.yml`'s matrix now passes the tier
-explicitly (one CI job per OS per tier, six total) rather than
-autodetecting the *build* machine's hardware, which has nothing to do with
-whoever installs the result; `scripts/detect_tier_requirements.py`'s
-autodetection still backs a local run with no tier argument.
-`scripts/build_backend.sh`/`.ps1` install only the requested tier's
-requirements before freezing; `hearth-backend.spec` probes which package
-actually got installed (real `import` check, not a guess) and only
-references that tier's `collect_all()`/hidden-imports.
+The CI/release freeze is now a **thin build**: `scripts/build_backend.sh`/
+`.ps1` install only `backend/requirements-common.txt` before running
+PyInstaller — no torch, onnxruntime, parler-tts, or ttstokenizer gets
+frozen into the installer at all, for either hardware tier. That used to
+be split by tier (`backend/requirements-gpu.txt` for Parler-TTS-Tiny-v1
+tier S/A, `backend/requirements-cpu.txt` for Kokoro/onnxruntime tier B/C),
+with `.github/workflows/build.yml`'s matrix passing the tier explicitly
+(one CI job per OS per tier, six total) and `scripts/
+detect_tier_requirements.py` autodetecting the *build* machine's hardware
+for local no-argument runs. Both of those are gone: CI has no GPU to match
+a build-time tier decision against anyway (that autodetection script has
+been deleted), and freezing a heavy tier-specific stack in at build time
+is exactly what caused the 2GB GitHub release-asset limit and RPM
+bundling-slowness problems this project used to work around.
+
+That tier decision — and which CUDA/ROCm/DirectML variant to use — now
+happens on the *end user's own machine*, at first launch, via a new in-app
+setup flow (`backend/app/setup/hardware_variant.py`, `installer.py`,
+`models.py`, `orchestrator.py`, exposed as `GET /api/setup/status`,
+`POST /api/setup/start`, `GET /api/setup/progress`). It detects NVIDIA
+GPU + CUDA driver version, AMD GPU (ROCm on Linux), or no GPU (CPU-only,
+or `onnxruntime-directml` on Windows), then pip-installs the matching
+`torch`/`onnxruntime` build using a standalone Python interpreter bundled
+as a Tauri resource (`desktop/src-tauri/resources/setup-python/`, fetched
+by `scripts/fetch_setup_python.py` from `astral-sh/python-build-standalone`
+— PyInstaller-frozen apps don't reliably support installing new packages
+into themselves at runtime, hence the separate interpreter). The same
+in-app flow also downloads the LLM/embedding model files, superseding
+`scripts/setup.py` as the primary path — that script still exists and
+still works as a manual/headless CLI alternative for local dev (see the
+root README), but the packaged app no longer needs it run beforehand.
+`requirements-gpu.txt`/`requirements-cpu.txt` still exist and still encode
+the tier S/A vs B/C package split; they're just installed by
+`backend/app/setup/orchestrator.py` at first run now instead of by
+`build_backend.sh`/`.ps1` at freeze time.
+
+This in-app setup flow has been verified locally in isolation (hardware
+detection, package-index selection, the model-download logic it shares
+with `scripts/setup.py`), but **not** end-to-end against a real installed
+app on real GPU/CPU hardware — treat it as unverified in that sense until
+someone actually runs the packaged installer's first-launch flow on a
+target machine.
 
 ## What this does NOT do yet (real gaps, not oversights)
 
@@ -77,6 +104,7 @@ library error, not a bug in this scaffold.
   ```
   bash scripts/build_backend.sh      # or scripts/build_backend.ps1 on Windows
   python3 scripts/fetch_llama_cpp.py
+  python3 scripts/fetch_setup_python.py
   ```
 - `pnpm run tauri:build` — build the frontend and produce installers for
   the *current* platform only (Tauri's bundlers are native, OS-specific
@@ -95,18 +123,19 @@ either:
 
 **Option A — CI (recommended, no extra machines needed).**
 `.github/workflows/build.yml` matrixes across
-`ubuntu-24.04`/`windows-latest`/`macos-latest` **and** the two hardware
-tiers (GPU/tier S-A vs CPU/tier B-C) — six jobs total. Each job installs
-the Linux system deps above (Linux only), freezes the backend against its
-assigned tier's requirements file, fetches the bundled `llama-server`, and
-builds via the official
-[`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action)
-with a tier-specific `productName` override (`Hearth-GPU` /
-`Hearth-CPU` — no spaces or parens, since tauri-action's arg tokenizer
-doesn't handle escaped quotes around a space-containing value; a first
-attempt at this using `"Hearth (GPU)"` broke on every job that reached the
-Build step) so both tiers' installers land as distinct assets instead
-of colliding. Push a `v*` tag (or run it manually via "Run workflow") — it
+`ubuntu-24.04`/`windows-latest`/`macos-latest` only — three jobs total,
+one per OS, not per hardware tier. Each job installs the Linux system deps
+above (Linux only), freezes the backend as the thin build described
+above, fetches the bundled `llama-server`, fetches the bundled
+setup-time Python (`scripts/fetch_setup_python.py`), and builds via the
+official [`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action)
+— there's just one `productName` (`Hearth`, from `tauri.conf.json`) now,
+since there's no longer a GPU-tier/CPU-tier split to keep as distinct
+assets. (This used to matrix across a hardware-tier axis too — six jobs,
+with a tier-specific `Hearth-GPU`/`Hearth-CPU` `productName` override to
+keep the two tiers' installers from colliding — collapsed back to three
+jobs and one plain name now that neither installer needs to differ by
+tier at all.) Push a `v*` tag (or run it manually via "Run workflow") — it
 opens a draft GitHub Release with every installer from every job attached.
 Needs a real git repo pushed to GitHub to actually run (this project
 doesn't have one yet).
@@ -115,9 +144,9 @@ doesn't have one yet).
 
 | Platform | Prerequisites | Command | Output |
 |---|---|---|---|
-| Linux | The `apt-get install` above, Python 3.12 | `scripts/build_backend.sh` → `scripts/fetch_llama_cpp.py` → `pnpm run tauri:build` (from `desktop/`) | `src-tauri/target/release/bundle/deb/*.deb`, `.../rpm/*.rpm` |
-| Windows | Rust (MSVC toolchain) + [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) (C++ workload), Python 3.12. WiX Toolset v3 for `.msi` is auto-downloaded by Tauri's bundler on first build. | `scripts/build_backend.ps1` → `python scripts/fetch_llama_cpp.py` → `pnpm run tauri:build` (from `desktop/`, in PowerShell) | `.../bundle/msi/*.msi`, `.../nsis/*-setup.exe` |
-| macOS | Xcode Command Line Tools (`xcode-select --install`), Python 3.12 | `scripts/build_backend.sh` → `scripts/fetch_llama_cpp.py` → `pnpm run tauri:build` (from `desktop/`) | `.../bundle/dmg/*.dmg`, `.../bundle/macos/*.app` |
+| Linux | The `apt-get install` above, Python 3.12 | `scripts/build_backend.sh` → `scripts/fetch_llama_cpp.py` → `scripts/fetch_setup_python.py` → `pnpm run tauri:build` (from `desktop/`) | `src-tauri/target/release/bundle/deb/*.deb`, `.../rpm/*.rpm` |
+| Windows | Rust (MSVC toolchain) + [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) (C++ workload), Python 3.12. WiX Toolset v3 for `.msi` is auto-downloaded by Tauri's bundler on first build. | `scripts/build_backend.ps1` → `python scripts/fetch_llama_cpp.py` → `python scripts/fetch_setup_python.py` → `pnpm run tauri:build` (from `desktop/`, in PowerShell) | `.../bundle/msi/*.msi`, `.../nsis/*-setup.exe` |
+| macOS | Xcode Command Line Tools (`xcode-select --install`), Python 3.12 | `scripts/build_backend.sh` → `scripts/fetch_llama_cpp.py` → `scripts/fetch_setup_python.py` → `pnpm run tauri:build` (from `desktop/`) | `.../bundle/dmg/*.dmg`, `.../bundle/macos/*.app` |
 
 **Code signing — not done here.** Unsigned builds will warn or outright
 block users on Windows (SmartScreen) and macOS (Gatekeeper will say the
@@ -134,15 +163,17 @@ built it). Before real distribution you need:
   packages.
 
 None of the CI matrix / real Windows/macOS builds can be verified in this
-sandbox (no Windows/macOS runners here). Neither tier's PyInstaller freeze
-has been re-verified since the TTS engine swap that replaced
-Chatterbox-Turbo with Parler-TTS-Tiny-v1 (tier S/A) and the third-party
-`kokoro-onnx` port with NeuML/kokoro-fp16-onnx via onnxruntime +
-ttstokenizer (tier B/C) — the prior ~1.9GB/kokoro-onnx verified-build claim
-this section used to make no longer applies to either tier; no output-size
-or import-chain claim should be assumed to hold until a real `pyinstaller`
-run against each of
-`requirements-gpu.txt`/`requirements-cpu.txt` is done again. Separately,
+sandbox (no Windows/macOS runners here). The thin PyInstaller freeze
+(`requirements-common.txt` only, no TTS stack at all) hasn't been
+re-verified end-to-end against a real `pyinstaller` run in this sandbox
+either — no output-size or import-chain claim should be assumed to hold
+until that's actually done. The in-app setup flow that now performs the
+former tier-specific install
+(`backend/app/setup/orchestrator.py` pip-installing
+`requirements-gpu.txt`/`requirements-cpu.txt` against the bundled
+setup-Python) has likewise only been exercised locally in isolation, not
+against a real frozen/installed build on real GPU or CPU hardware —
+treat both as unverified in that sense. Separately,
 the `llama-server` download/extraction genuinely works and the extracted
 binary runs with `LD_LIBRARY_PATH` pointed at its own directory (exactly
 what `main.rs` sets up); `cargo check` on `main.rs` resolves its

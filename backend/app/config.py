@@ -1,5 +1,6 @@
 """Paths, ports, and tier config."""
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -15,6 +16,26 @@ load_dotenv(BACKEND_DIR / ".env")
 
 MODELS_DIR = BACKEND_DIR / "models"
 DATA_DIR = BACKEND_DIR / "data"
+
+# Where app/setup/installer.py pip-installs the hardware-matched torch/
+# onnxruntime build into, post-first-run (see project setup plan — CI ships
+# a thin build with neither, since CI has no GPU to match against). Single
+# definition shared by both call sites that need it: this module extends
+# sys.path automatically below (covers a *second* launch, after a previous
+# run already finished setup), and installer.py calls
+# extend_backend_deps_path() again right after a fresh install completes
+# (covers the *first* launch, extending the already-running process's
+# sys.path without needing a restart).
+BACKEND_DEPS_DIR = BACKEND_DIR / "backend-deps"
+
+
+def extend_backend_deps_path() -> None:
+    path_str = str(BACKEND_DEPS_DIR)
+    if BACKEND_DEPS_DIR.is_dir() and path_str not in sys.path:
+        sys.path.insert(0, path_str)
+
+
+extend_backend_deps_path()
 
 LLM_MODELS_DIR = MODELS_DIR / "llm"
 STT_MODELS_DIR = MODELS_DIR / "stt"

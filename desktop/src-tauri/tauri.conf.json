@@ -36,7 +36,8 @@
     ],
     "resources": {
       "resources/hearth-backend": "backend",
-      "resources/llama-cpp": "llama-cpp"
+      "resources/llama-cpp": "llama-cpp",
+      "resources/setup-python": "setup-python"
     }
   }
 }

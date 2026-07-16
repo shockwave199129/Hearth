@@ -3,17 +3,10 @@
 # what's verified vs. still-risky. Single source of truth used by both
 # local release builds and CI (.github/workflows/build.yml).
 #
-# Takes an optional -Tier argument ("gpu" or "cpu") selecting
-# requirements-gpu.txt/-cpu.txt directly — see build_backend.sh's matching
-# comment for why CI always passes this explicitly instead of
-# autodetecting from the build machine's hardware. Defaults to "cpu" when
-# omitted (e.g. a local run), since a GPU-tier Windows build additionally
-# needs a CUDA-enabled torch wheel that plain `pip install` won't select.
-param(
-    [ValidateSet("gpu", "cpu")]
-    [string]$Tier = "cpu"
-)
-
+# THIN BUILD: only installs requirements-common.txt — see build_backend.sh's
+# matching comment for why (no tier-specific TTS stack is installed at
+# freeze time anymore; that now happens at first run on the user's own
+# machine instead).
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -21,22 +14,9 @@ $RepoRoot = Split-Path -Parent $ScriptDir
 $BackendDir = Join-Path $RepoRoot "backend"
 $ResourcesDir = Join-Path $RepoRoot "desktop\src-tauri\resources"
 
-# uv's resolver/installer is a drop-in for pip here (same --only-binary/-r
-# flags) and is dramatically faster for this repo's heavier tier stacks
-# (torch, transformers) — --system installs into the current interpreter
-# rather than requiring a venv, matching plain `pip install`'s behavior.
 python -m pip install --quiet uv
 
 uv pip install --quiet --system --only-binary=:all: -r "$BackendDir\requirements-common.txt"
-$TierReq = "requirements-$Tier.txt"
-Write-Host "Using tier requirements: $TierReq"
-# No --only-binary=:all: here (unlike the common install above):
-# requirements-gpu.txt's parler-tts and its descript-audiotools-unofficial/
-# descript-audio-codec-unofficial dependencies only publish sdists on PyPI
-# (no wheels), so they must be built from source — verified via PyPI
-# metadata for all three.
-uv pip install --quiet --system -r "$BackendDir\$TierReq"
-# Ensure PyInstaller is available for the subsequent freeze step.
 uv pip install --quiet --system pyinstaller
 
 Push-Location $BackendDir

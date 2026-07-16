@@ -25,7 +25,8 @@ FastAPI (backend) · React/Vite (frontend) · Tauri (desktop packaging).
 backend/     FastAPI app, all model work (STT/LLM/TTS), REST + websocket API
 frontend/    React/Vite web app (onboarding, chat, settings)
 desktop/     Tauri wrapper — packages frontend + backend into an installer
-scripts/     hardware_check.py (tier probe), setup.py (model downloads)
+scripts/     hardware_check.py (tier probe), setup.py (manual/dev-only
+             model downloads — the packaged app now does this in-app)
 docs/        architecture.md, privacy.md
 ```
 
@@ -53,8 +54,9 @@ pip install -r requirements-gpu.txt   # tier S/A — Parler-TTS-Tiny-v1
 # or: pip install -r requirements-cpu.txt   # tier B/C — Kokoro TTS
 ```
 
-Not sure which tier you are? Run `python ../scripts/detect_tier_requirements.py`
-after installing `requirements-common.txt` — it prints the right file.
+Not sure which tier you are? Run `python ../scripts/hardware_check.py`
+after installing `requirements-common.txt` — it prints your detected
+hardware and tier (S/A -> requirements-gpu.txt, B/C -> requirements-cpu.txt).
 
 Download the model files for your detected hardware tier:
 
@@ -95,9 +97,13 @@ pnpm run tauri:dev     # run the desktop shell against the Vite dev server
 pnpm run tauri:build   # build an installer for the current platform
 ```
 
-See [`desktop/src-tauri/README.md`](desktop/src-tauri/README.md) for Linux
-build prerequisites and what's still scaffold-only (frozen Python
-interpreter, real app icons).
+The packaged installer is a thin build — no torch/onnxruntime/parler-tts/
+kokoro frozen in — and detects the installing machine's hardware on first
+launch to install the matching TTS package and download models itself, in
+the app UI (no manual `pip install`/`setup.py` needed for an installed
+app). See [`desktop/src-tauri/README.md`](desktop/src-tauri/README.md) for
+Linux build prerequisites, how that in-app setup flow works, and what's
+still scaffold-only (real app icons).
 
 ## Development notes
 

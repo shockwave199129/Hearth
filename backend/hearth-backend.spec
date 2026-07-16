@@ -9,13 +9,13 @@
 # onefile's per-launch self-extraction cost and is far easier to debug
 # missing-library issues in (you can just look in the output folder).
 #
-# TIER-AWARE: requirements-gpu.txt (parler-tts, tier S/A, torch-based) and
-# requirements-cpu.txt (NeuML/kokoro-fp16-onnx via onnxruntime +
-# ttstokenizer, tier B/C, no torch) are never both installed in one
-# environment — see requirements-common.txt for why. This spec detects
-# which one is present via a real import probe (below) rather than
-# assuming, so collect_all()/hiddenimports only reference the package
-# that's actually installed.
+# THIN BUILD: this freezes requirements-common.txt only — no torch,
+# onnxruntime, parler-tts, or ttstokenizer. Neither hardware tier's TTS
+# stack is installed at freeze time anymore; CI has no GPU to match either
+# one against, so that decision now happens on the user's own machine at
+# first run instead (see backend/app/setup/ and its /api/setup/*
+# endpoints). This spec used to probe which of the two was installed and
+# fail if neither/both were — removed entirely, since neither ever is now.
 from pathlib import Path
 
 # Import the core PyInstaller building classes required for the spec.
@@ -40,29 +40,16 @@ APP_DIR = BACKEND_DIR / "app"
 datas = [
     (str(APP_DIR / "skills" / "library"), "app/skills/library"),
     (str(APP_DIR / "safety" / "safety_audio"), "app/safety/safety_audio"),
+    # dest "." places these at the root of the frozen bundle's data dir —
+    # BACKEND_DIR (app/config.py) resolves to exactly that root at runtime
+    # in both dev and frozen modes, so app/setup/orchestrator.py's
+    # `BACKEND_DIR / "requirements-gpu.txt"` needs no frozen/dev branching,
+    # unlike the setup-python Tauri resource (a sibling of this whole
+    # "backend" bundle, not something inside it — see
+    # app/setup/installer.py's _setup_python_archive_dir()).
+    (str(BACKEND_DIR / "requirements-gpu.txt"), "."),
+    (str(BACKEND_DIR / "requirements-cpu.txt"), "."),
 ]
-
-# Which TTS stack is actually installed in this build's venv — real import
-# probe, not a guess, since requirements-gpu.txt/-cpu.txt are never both
-# installed at once (see note above).
-try:
-    import parler_tts  # noqa: F401
-    _HAS_PARLER = True
-except ImportError:
-    _HAS_PARLER = False
-
-try:
-    import ttstokenizer  # noqa: F401
-    _HAS_KOKORO = True
-except ImportError:
-    _HAS_KOKORO = False
-
-if _HAS_PARLER == _HAS_KOKORO:
-    raise RuntimeError(
-        "Expected exactly one of parler-tts/ttstokenizer installed "
-        f"(got parler_tts={_HAS_PARLER}, ttstokenizer={_HAS_KOKORO}) — "
-        "install requirements-gpu.txt or requirements-cpu.txt, not both/neither."
-    )
 
 hiddenimports = [
     # uvicorn dynamically selects its event loop / protocol implementations
@@ -85,14 +72,16 @@ hiddenimports = [
     "moonshine_voice",
     "moonshine_voice.transcriber",
 ]
-if _HAS_PARLER:
-    hiddenimports += ["parler_tts"]
-if _HAS_KOKORO:
-    hiddenimports += ["ttstokenizer"]
 
 # Packages with native extensions / plugin-style dynamic imports that
 # PyInstaller's default analysis reliably misses — collect_all() pulls in
 # their submodules, data files, and bundled shared libraries together.
+# No torch/parler_tts/ttstokenizer here anymore — see the THIN BUILD note
+# above. onnxruntime stays: it's chromadb's own transitive dependency
+# (verified via chromadb's PyPI metadata: onnxruntime>=1.14.1, for its
+# default embedding function), not moonshine_voice's — moonshine-voice's
+# own metadata declares no onnxruntime dependency at all, so it's always
+# installed via requirements-common.txt's chromadb regardless of tier.
 _COLLECT_ALL_PACKAGES = [
     "chromadb",
     "onnxruntime",
@@ -102,16 +91,6 @@ _COLLECT_ALL_PACKAGES = [
     "langchain_openai",
     "langgraph",
 ]
-if _HAS_PARLER:
-    _COLLECT_ALL_PACKAGES += ["torch", "parler_tts"]
-if _HAS_KOKORO:
-    # ttstokenizer pulls in nltk, which normally fetches its tokenizer data
-    # packages (e.g. punkt) on first use over the network rather than
-    # shipping them as package data — collect_all() only grabs what's
-    # already installed as package data, so this has NOT been verified to
-    # cover nltk's runtime data fetch inside a frozen, possibly offline
-    # build. Flagged here rather than assumed to just work.
-    _COLLECT_ALL_PACKAGES += ["ttstokenizer"]
 
 # NOTE: The collection of package data is performed after the Analysis
 # step (which defines the `a` object) to avoid referencing `a` before it is

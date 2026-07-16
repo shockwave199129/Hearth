@@ -13,10 +13,21 @@ permissions:
 # app/dmg — deliberately no appimage) and desktop/src-tauri/README.md for
 # what's still scaffold-only (unsigned builds).
 #
-# Each job freezes the Python backend (PyInstaller) and fetches a bundled
-# llama-server before the Tauri build, so the resulting installer needs
-# neither on the end user's machine — see backend/hearth-backend.spec,
-# scripts/build_backend.sh/.ps1, and scripts/fetch_llama_cpp.py.
+# One job per OS, not per hardware tier — the backend freeze is a THIN
+# build (requirements-common.txt only, no torch/onnxruntime/parler-tts/
+# ttstokenizer). CI has no GPU to match those against anyway; that
+# decision (and which CUDA/ROCm/DirectML variant to use) now happens on
+# the user's own machine at first run instead, via a bundled standalone
+# Python (scripts/fetch_setup_python.py) and backend/app/setup/'s
+# /api/setup/* endpoints. This used to matrix across a GPU/CPU tier axis
+# too (six jobs, Hearth-GPU/Hearth-CPU installers) — collapsed back to
+# three now that neither installer needs to differ by tier at all.
+#
+# Each job freezes the Python backend (PyInstaller), fetches a bundled
+# llama-server, and fetches the bundled setup-time Python, so the
+# resulting installer needs none of them pre-installed on the end user's
+# machine — see backend/hearth-backend.spec, scripts/build_backend.sh/.ps1,
+# scripts/fetch_llama_cpp.py, and scripts/fetch_setup_python.py.
 on:
   push:
     tags: ["v*"]
@@ -26,64 +37,10 @@ jobs:
   build:
     env:
       ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-    # Two full builds per OS — one per hardware tier (see
-    # backend/requirements-gpu.txt: tier S/A, Parler-TTS-Tiny-v1, vs
-    # requirements-cpu.txt: tier B/C, Kokoro) — rather than one build whose
-    # TTS engine is autodetected from the CI runner's own hardware, which
-    # has nothing to do with the hardware of whoever installs the result.
-    # productName is overridden per tier so both installers can coexist as
-    # distinct assets on the same GitHub release instead of colliding.
-    # Arch-specific runners (ARM64 Windows/Linux, Intel vs Apple Silicon
-    # macOS) are a deliberate follow-up, not covered by this matrix yet.
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # extraConfig: additional --config JSON fields merged in below,
-          # as a leading-comma fragment (empty string for every row that
-          # doesn't need one). No row currently needs one, but the
-          # mechanism is kept for the next platform-specific override.
-          #
-          # The Linux GPU tier previously dropped `rpm` here (Tauri's rpm
-          # bundler gzip-compressing a multi-GB payload past an hour with
-          # no progress output) and separately failed to upload its `.deb`
-          # (over GitHub's 2GB release-asset limit) — both traced to the
-          # same root cause, not an inherent tier-B/C size difference:
-          # torch's default Linux wheel requires nvidia-cudnn-cu13/
-          # nvidia-cusparselt-cu13/nvidia-nccl-cu13/nvidia-nvshmem-cu13
-          # (hundreds of MB to 1GB+ each of unused CUDA runtime binaries —
-          # this project bundles no GPU acceleration anywhere) whenever
-          # platform_system == "Linux", verified via torch's own PyPI
-          # metadata. build_backend.sh now installs the dedicated CPU-only
-          # torch build first specifically to avoid this — see its own
-          # comment for the verified before/after. Re-enabled `rpm` here on
-          # that basis; if the next real run shows it's still slow/over
-          # the size limit, that assumption was wrong and this needs
-          # revisiting.
-          - platform: ubuntu-24.04
-            tier: gpu
-            productName: "Hearth-GPU"
-            extraConfig: ""
-          - platform: ubuntu-24.04
-            tier: cpu
-            productName: "Hearth-CPU"
-            extraConfig: ""
-          - platform: windows-latest
-            tier: gpu
-            productName: "Hearth-GPU"
-            extraConfig: ""
-          - platform: windows-latest
-            tier: cpu
-            productName: "Hearth-CPU"
-            extraConfig: ""
-          - platform: macos-latest
-            tier: gpu
-            productName: "Hearth-GPU"
-            extraConfig: ""
-          - platform: macos-latest
-            tier: cpu
-            productName: "Hearth-CPU"
-            extraConfig: ""
+        platform: [ubuntu-24.04, windows-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -127,18 +84,15 @@ jobs:
         working-directory: desktop
         run: pnpm install --frozen-lockfile
 
-      # Populates desktop/src-tauri/resources/hearth-backend/ — see
-      # backend/hearth-backend.spec for what's bundled and what's
-      # actually been verified vs. still-risky. matrix.tier picks
-      # requirements-gpu.txt/-cpu.txt explicitly (see build_backend.sh/.ps1)
-      # rather than autodetecting the runner's own hardware.
+      # Populates desktop/src-tauri/resources/hearth-backend/ — thin build,
+      # see backend/hearth-backend.spec and scripts/build_backend.sh/.ps1.
       - name: Freeze backend (Linux/macOS)
         if: matrix.platform != 'windows-latest'
-        run: bash scripts/build_backend.sh ${{ matrix.tier }}
+        run: bash scripts/build_backend.sh
 
       - name: Freeze backend (Windows)
         if: matrix.platform == 'windows-latest'
-        run: pwsh scripts/build_backend.ps1 -Tier ${{ matrix.tier }}
+        run: pwsh scripts/build_backend.ps1
 
       # Populates desktop/src-tauri/resources/llama-cpp/ — CPU-only on
       # Linux/Windows, Metal-included on macOS (its only variant). See
@@ -147,6 +101,13 @@ jobs:
         run: |
           uv pip install --quiet --system requests
           python scripts/fetch_llama_cpp.py
+
+      # Populates desktop/src-tauri/resources/setup-python/ — the
+      # standalone Python the in-app setup screen uses to pip-install the
+      # hardware-matched torch/onnxruntime build at first run. See
+      # scripts/fetch_setup_python.py and backend/app/setup/installer.py.
+      - name: Fetch bundled setup Python
+        run: python scripts/fetch_setup_python.py
 
       - name: Build
         uses: tauri-apps/tauri-action@v0
@@ -166,15 +127,3 @@ jobs:
           releaseName: "Hearth ${{ github.ref_name }}"
           releaseDraft: true
           prerelease: false
-          # productName override distinguishes the GPU/CPU installers as
-          # separate assets on the shared draft release above (same
-          # tagName/releaseName for every matrix job) — without it, both
-          # tiers on the same OS would bundle to identical filenames and
-          # the second upload would collide with the first. Single-quoted
-          # (not \"-escaped) and no spaces in productName: tauri-action's
-          # arg tokenizer doesn't understand backslash-escaped quotes, so
-          # the previous `"{\"productName\":\"Hearth (CPU)\"}"` form broke
-          # apart at the first embedded quote — this failed on every job
-          # that reached this step. Single quotes need no inner escaping,
-          # and the missing space means there's nothing left to split on.
-          args: --config '{"productName":"${{ matrix.productName }}"${{ matrix.extraConfig }}}'

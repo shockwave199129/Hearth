@@ -2,12 +2,47 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { Chat } from "./pages/Chat";
 import { Onboarding } from "./pages/Onboarding";
+import { Setup } from "./pages/Setup";
 import { Settings } from "./pages/Settings";
 import { useProfile } from "./hooks/useProfile";
+import { useSetupStatus } from "./hooks/useSetupStatus";
 import "./App.css";
 
 export function App() {
+  const setup = useSetupStatus();
+  // Runs unconditionally alongside the setup gate below (React hooks can't
+  // be called conditionally) — /api/profile doesn't need Pipeline() to be
+  // built, so this resolves fine even before setup completes; its result
+  // just isn't used for anything until we fall through past the gate.
   const { profile, loading, error } = useProfile();
+
+  if (setup.status === null && setup.error === null) {
+    return (
+      <div className="app-splash" aria-busy="true">
+        <p className="app-splash__message">Checking your setup…</p>
+      </div>
+    );
+  }
+
+  if (setup.error) {
+    return (
+      <div className="app-splash">
+        <p className="app-splash__message">{setup.error}</p>
+      </div>
+    );
+  }
+
+  if (setup.status && !setup.status.complete) {
+    return (
+      <Setup
+        status={setup.status}
+        statusError={setup.error}
+        progress={setup.progress}
+        starting={setup.starting}
+        onStart={() => void setup.startSetup()}
+      />
+    );
+  }
 
   if (loading) {
     // Stays true throughout useProfile's retry-with-backoff window (see

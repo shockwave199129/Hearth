@@ -7,6 +7,7 @@ import argparse
 import io
 import json
 import logging
+import threading
 import wave
 from datetime import datetime, timezone
 
@@ -53,6 +54,8 @@ from app.onboarding.profile_store import (
     update_speak_replies,
 )
 from app.safety import crisis_detector, escalation
+from app.setup import orchestrator
+from app.setup.installer import InstallProgress
 from app.skills.loader import get_skill, load_catalog
 from app.skills.tools import SKILL_TOOLS
 from app.stt.moonshine_engine import MoonshineEngine
@@ -314,11 +317,31 @@ class Pipeline:
 
 _pipeline: Pipeline | None = None
 
+# One process-wide progress tracker for the setup flow — see
+# app/setup/orchestrator.py. A thread rather than an async task since
+# run_setup() does blocking subprocess/network calls throughout.
+_setup_progress = InstallProgress()
+_setup_thread: threading.Thread | None = None
+
+
+def _require_pipeline() -> None:
+    """Every endpoint below Pipeline() used to bare `assert _pipeline is
+    not None` — a thin build (CI no longer bundles torch/onnxruntime, see
+    the project setup plan, so _startup() can't construct Pipeline() until
+    /api/setup/start finishes) means that's now an expected, recoverable
+    state, not a should-never-happen bug — a 503 lets the frontend show
+    "finish setup first" instead of crashing."""
+    if _pipeline is None:
+        raise HTTPException(status_code=503, detail="Setup not complete — see /api/setup/status")
+
 
 @app.on_event("startup")
 def _startup() -> None:
     global _pipeline
-    _pipeline = Pipeline()
+    if orchestrator.detect_status()["complete"]:
+        _pipeline = Pipeline()
+    else:
+        logger.info("Setup not complete yet — waiting for /api/setup/start before building the pipeline.")
 
 
 @app.on_event("shutdown")
@@ -329,7 +352,7 @@ def _shutdown() -> None:
 
 @app.get("/api/status")
 def get_status() -> dict:
-    assert _pipeline is not None
+    _require_pipeline()
     tier = _pipeline.tier
     return {
         "tier": tier.tier,
@@ -338,6 +361,45 @@ def get_status() -> dict:
         "tts_engine": tier.tts_engine,
         "hardware": detect_hardware(),
     }
+
+
+@app.get("/api/setup/status")
+def get_setup_status() -> dict:
+    return orchestrator.detect_status()
+
+
+@app.post("/api/setup/start")
+def start_setup() -> dict:
+    """Idempotent — if a setup run is already in flight, just returns its
+    current progress instead of starting a second overlapping one."""
+    global _setup_thread
+    if _setup_thread is not None and _setup_thread.is_alive():
+        return _setup_progress.snapshot()
+
+    def _run() -> None:
+        global _pipeline
+        orchestrator.run_setup(_setup_progress)
+        if _setup_progress.snapshot()["step"] != "done":
+            return
+        try:
+            _pipeline = Pipeline()
+        except Exception as exc:
+            # Packages/models installed fine, but constructing the actual
+            # pipeline still failed (e.g. llama-server missing/broken) —
+            # caught for real during this feature's own local verification,
+            # not a hypothetical: without this, the UI would show "done"
+            # forever while /api/status silently 503s with no explanation.
+            logger.exception("Pipeline() construction failed after setup completed")
+            _setup_progress.set_error(f"setup finished but the app failed to start: {exc}")
+
+    _setup_thread = threading.Thread(target=_run, daemon=True)
+    _setup_thread.start()
+    return _setup_progress.snapshot()
+
+
+@app.get("/api/setup/progress")
+def get_setup_progress() -> dict:
+    return _setup_progress.snapshot()
 
 
 @app.get("/api/profile")
@@ -365,7 +427,7 @@ def api_update_profile(payload: ProfileSettingsUpdate) -> UserProfile:
         raise HTTPException(status_code=404, detail="no profile saved yet")
     update_speak_replies(user_id, payload.speak_replies)
     updated = get_profile(user_id)
-    assert _pipeline is not None
+    _require_pipeline()
     # A plain attribute swap, not set_profile() — speak_replies doesn't
     # affect the system prompt or the agent's tools, so there's no need to
     # rebuild the create_agent graph just to flip this.
@@ -380,7 +442,7 @@ def api_complete_onboarding(payload: OnboardingRequest) -> UserProfile:
     Add another profile reuses this same form/endpoint)."""
     profile = create_profile(payload)
     set_active_user_id(profile.user_id)
-    assert _pipeline is not None
+    _require_pipeline()
     _pipeline.set_profile(profile)
     return profile
 
@@ -396,7 +458,7 @@ def api_activate_profile(user_id: str) -> UserProfile:
     if profile is None:
         raise HTTPException(status_code=404, detail="profile not found")
     set_active_user_id(user_id)
-    assert _pipeline is not None
+    _require_pipeline()
     _pipeline.set_profile(profile)
     return profile
 
@@ -416,7 +478,7 @@ def api_delete_profile(user_id: str) -> dict:
     escalation.delete_escalations(user_id)
     chat_history.delete_all_for_user(user_id)
 
-    assert _pipeline is not None
+    _require_pipeline()
     if was_active:
         remaining = list_profiles()
         if remaining:
@@ -434,13 +496,13 @@ class MemoryUpdateRequest(BaseModel):
 
 @app.get("/api/memories")
 def api_list_memories(category: str | None = None) -> list[dict]:
-    assert _pipeline is not None
+    _require_pipeline()
     return long_term.list_memories(_pipeline.profile.user_id, category)
 
 
 @app.get("/api/memories/{mem_id}")
 def api_get_memory(mem_id: str) -> dict:
-    assert _pipeline is not None
+    _require_pipeline()
     result = long_term.get(mem_id, _pipeline.profile.user_id)
     if result is None:
         raise HTTPException(status_code=404, detail="memory not found")
@@ -449,7 +511,7 @@ def api_get_memory(mem_id: str) -> dict:
 
 @app.put("/api/memories/{mem_id}")
 def api_update_memory(mem_id: str, payload: MemoryUpdateRequest) -> dict:
-    assert _pipeline is not None
+    _require_pipeline()
     user_id = _pipeline.profile.user_id
     if long_term.get(mem_id, user_id) is None:
         raise HTTPException(status_code=404, detail="memory not found")
@@ -459,7 +521,7 @@ def api_update_memory(mem_id: str, payload: MemoryUpdateRequest) -> dict:
 
 @app.delete("/api/memories/{mem_id}")
 def api_delete_memory(mem_id: str) -> dict:
-    assert _pipeline is not None
+    _require_pipeline()
     long_term.delete(mem_id, _pipeline.profile.user_id)
     return {"ok": True}
 
@@ -484,7 +546,7 @@ def api_get_skill(skill_id: str) -> dict:
 
 @app.get("/api/checkin")
 def api_get_checkin() -> dict:
-    assert _pipeline is not None
+    _require_pipeline()
     last = get_last_checkin(_pipeline.profile.user_id)
     days_since = (datetime.now(timezone.utc).date() - last.date()).days if last else None
     return {
@@ -498,7 +560,7 @@ def api_get_safety_status() -> dict:
     """Read-only transparency surface — same 'never actually hidden'
     principle as /api/memories, /api/skills, /api/checkin. See
     project-plan.md §9."""
-    assert _pipeline is not None
+    _require_pipeline()
     user_id = _pipeline.profile.user_id
     last = escalation.last_escalation(user_id)
     return {
@@ -509,7 +571,7 @@ def api_get_safety_status() -> dict:
 
 @app.get("/api/chat_history")
 def api_list_chat_history(limit: int = 50) -> list[dict]:
-    assert _pipeline is not None
+    _require_pipeline()
     return chat_history.list_turns(_pipeline.profile.user_id, limit)
 
 
@@ -518,7 +580,7 @@ def api_replay_chat_history(row_id: int) -> Response:
     """Re-synthesizes a stored past reply on demand via the normal TTS
     engine — no audio files are cached anywhere (see project-plan.md's
     audio_cache discussion; this replaces that with plain re-synthesis)."""
-    assert _pipeline is not None
+    _require_pipeline()
     turn = chat_history.get_turn(_pipeline.profile.user_id, row_id)
     if turn is None:
         raise HTTPException(status_code=404, detail="turn not found")
@@ -531,7 +593,7 @@ def api_replay_chat_history(row_id: int) -> Response:
 
 @app.delete("/api/chat_history/{row_id}")
 def api_delete_chat_history(row_id: int) -> dict:
-    assert _pipeline is not None
+    _require_pipeline()
     chat_history.delete_turn(_pipeline.profile.user_id, row_id)
     return {"ok": True}
 
@@ -549,7 +611,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     scoped to this one connection; long-term memory maintenance runs once,
     silently, when it ends — see project-plan.md §5."""
     await ws.accept()
-    assert _pipeline is not None
+    _require_pipeline()
     memory = _pipeline.new_session_memory()
     try:
         while True:
