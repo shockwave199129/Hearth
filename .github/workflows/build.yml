@@ -109,6 +109,31 @@ jobs:
       - name: Fetch bundled setup Python
         run: python scripts/fetch_setup_python.py
 
+      # tauri.conf.json's own "version" field is what actually gets
+      # embedded in every installer (Windows "Add/Remove Programs", the
+      # .deb/.rpm package version, the .app bundle version) — completely
+      # independent of the git tag that triggered the build; Tauri has no
+      # built-in mechanism to sync the two (confirmed against its own
+      # config docs: omitting "version" falls back to Cargo.toml's, not
+      # the git ref). Derived here and passed via --config below instead
+      # of hand-editing tauri.conf.json before every tag. Only a real tag
+      # push gets the tag's own version (v0.2.0 -> 0.2.0); a
+      # workflow_dispatch run (no tag — github.ref_name would just be the
+      # branch name, e.g. "main", not a version) falls back to a plain
+      # "0.0.0" — NOT "0.0.0-dev": confirmed via Microsoft's own MSI docs
+      # that ProductVersion must be strictly numeric `major.minor.build`,
+      # no pre-release suffix support at all, so a semver-style dev marker
+      # would break the Windows build specifically.
+      - name: Determine app version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=0.0.0" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build
         uses: tauri-apps/tauri-action@v0
         env:
@@ -127,3 +152,8 @@ jobs:
           releaseName: "Hearth ${{ github.ref_name }}"
           releaseDraft: true
           prerelease: false
+          # Single-quoted, no spaces — see the productName override this
+          # replaced earlier this session for exactly why: tauri-action's
+          # arg tokenizer doesn't understand backslash-escaped quotes or
+          # embedded spaces.
+          args: --config '{"version":"${{ steps.version.outputs.value }}"}'
