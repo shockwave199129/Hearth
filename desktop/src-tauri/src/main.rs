@@ -17,6 +17,9 @@ use std::sync::Mutex;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt as UnixCommandExt;
+
 use tauri::Manager;
 
 // Windows only: prevents the console window hearth-backend.exe would
@@ -94,7 +97,48 @@ fn spawn_backend_release(app: &tauri::AppHandle) -> std::io::Result<Child> {
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
 
+    // New process group (pgid == the backend's own pid) so kill_process_tree
+    // can signal the whole tree at once — hearth-backend.exe in turn spawns
+    // llama-server and, on first memory use, a second llama-server for
+    // embeddings (backend/app/llm/server_manager.py, backend/app/memory/
+    // embedder.py), both inherited into this same group since neither calls
+    // setpgid itself. Without this, killing only the top-level Child left
+    // both of those orphaned and still running after the app window closed.
+    #[cfg(unix)]
+    cmd.process_group(0);
+
     cmd.spawn()
+}
+
+/// Kills the backend process and every descendant it spawned (llama-server
+/// for the LLM, and a second llama-server for embeddings — see
+/// spawn_backend_release's process_group comment). `Child::kill()` alone
+/// only signals the single direct child, leaving those orphaned.
+fn kill_process_tree(child: &mut Child) {
+    let pid = child.id();
+
+    #[cfg(unix)]
+    unsafe {
+        // Negative pid targets the whole process group. SIGTERM first so
+        // uvicorn/Python get a chance at their own graceful shutdown, then
+        // SIGKILL shortly after for anything still alive.
+        libc::kill(-(pid as i32), libc::SIGTERM);
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        libc::kill(-(pid as i32), libc::SIGKILL);
+    }
+
+    #[cfg(windows)]
+    {
+        // taskkill's /T kills the whole process tree rooted at this pid —
+        // the standard way to reach grandchild processes on Windows, where
+        // there's no process-group equivalent to signal in one call.
+        let mut taskkill = Command::new("taskkill");
+        taskkill.args(["/PID", &pid.to_string(), "/T", "/F"]);
+        taskkill.creation_flags(CREATE_NO_WINDOW);
+        let _ = taskkill.status();
+    }
+
+    let _ = child.wait();
 }
 
 fn main() {
@@ -121,7 +165,7 @@ fn main() {
             if let tauri::WindowEvent::Destroyed = event {
                 let state = window.state::<BackendProcess>();
                 if let Some(mut child) = state.0.lock().unwrap().take() {
-                    let _ = child.kill();
+                    kill_process_tree(&mut child);
                 };
             }
         })
