@@ -134,25 +134,35 @@ a = Analysis(
 # After creating the Analysis object, collect additional package data and
 # binaries for packages that PyInstaller may miss. This must occur after `a`
 # is defined because we extend `a.binaries`.
-# Collect additional package data and binaries, handling cases where
-# ``collect_all`` returns binary entries with only two elements (src, dest).
-# PyInstaller expects a three‑tuple (src, dest, type). When the type is
-# omitted we default to "data" which is safe for most resources.
+#
+# collect_dynamic_libs() (called internally by collect_all(), verified via
+# its actual source — it always returns 2-tuples, never 3) returns
+# (source_path, dest_dir) — hook-API order. That's fine when passed into
+# Analysis()'s own `binaries=`/`datas=` constructor kwargs (its __init__
+# reverses hook-order into TOC order via format_binaries_and_datas()
+# before storing them), which is why `datas` above is left in that same
+# (source, dest) order. But appending directly to the already-constructed
+# `a.binaries` bypasses that reversal — `a.binaries` is a TOC and expects
+# (dest_name, src_name, typecode), matching what PyInstaller's own
+# equivalent internal code (depend.analysis.Analysis.make_hook_binaries_toc)
+# does for hook-contributed binaries. A previous version of this loop kept
+# hook-order (source, dest) when appending to `a.binaries` — PyInstaller's
+# COLLECT step then checked os.path.exists() on what it read as src_name
+# (actually the un-reversed dest fragment, e.g. "torch/lib"), which never
+# exists as a real path, so it silently dropped every one of these
+# binaries ("Ignoring non-existent resource torch/lib, meant to be
+# collected as .../torch/lib/libc10.dylib" in CI logs) — a real bug, not a
+# benign warning: torch/onnxruntime/moonshine_voice's actual native
+# libraries were never being bundled at all.
 for _pkg in _COLLECT_ALL_PACKAGES:
     _datas, _binaries, _hiddenimports = collect_all(_pkg)
     datas += _datas
     hiddenimports += _hiddenimports
     # Filter out libmoonshine.so from binaries collected by collect_all()
     cleaned_binaries = []
-    for entry in _binaries:
-        # entry may be (src, dest, typ) or (src, dest)
-        if len(entry) == 3:
-            src, dest, typ = entry
-        else:
-            src, dest = entry
-            typ = "data"
-        if not src.endswith("libmoonshine.so"):
-            cleaned_binaries.append((src, dest, typ))
+    for source, dest in _binaries:
+        if not source.endswith("libmoonshine.so"):
+            cleaned_binaries.append((dest, source, "BINARY"))
     a.binaries += cleaned_binaries
 
 # Build the PYZ archive (pure Python modules) and the executable wrapper.
