@@ -14,7 +14,23 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::Mutex;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 use tauri::Manager;
+
+// Windows only: prevents the console window hearth-backend.exe would
+// otherwise pop up alongside the app. hearth-backend.spec deliberately
+// keeps console=True rather than console=False - PyInstaller sets
+// sys.stdout/sys.stderr to None for a console=False (windowed) exe on
+// Windows, and this backend calls logging.basicConfig() (main.py) and
+// uvicorn.run() (both write to stderr/stdout unconditionally), which
+// would crash the instant either logs anything. Hiding the window here
+// instead — via the CREATE_NO_WINDOW flag on the spawned process — keeps
+// those real file descriptors intact while just not displaying the
+// window Windows would otherwise show for a console-subsystem exe.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 struct BackendProcess(Mutex<Option<Child>>);
 
@@ -74,6 +90,9 @@ fn spawn_backend_release(app: &tauri::AppHandle) -> std::io::Result<Child> {
     } else if !cfg!(target_os = "windows") {
         cmd.env("LD_LIBRARY_PATH", &llama_dir);
     }
+
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
 
     cmd.spawn()
 }
