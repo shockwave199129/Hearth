@@ -123,14 +123,20 @@ load_dotenv(USER_DATA_DIR / ".env")
 
 
 def _configure_huggingface_env() -> None:
-    """Keep Hugging Face caches under our userdata and avoid Windows hub
-    symlinks. Parler/transformers opening a hub snapshot `config.json` that
-    is a reparse point under a user path with spaces has failed in the field
-    with OSError Errno 22 (Invalid argument). setdefault so an explicit
-    shell/.env value still wins.
+    """Keep Hugging Face caches under our userdata and never use hub
+    symlinks/reparse points. Windows has failed in the field with
+    OSError Errno 22 when opening snapshot links under HF_HOME (including
+    under Program Files\\userdata). Force the flag (not setdefault) and
+    patch huggingface_hub.constants if it was already imported.
     """
     os.environ.setdefault("HF_HOME", str(USER_DATA_DIR / "hf-home"))
-    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
+    os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
+    try:
+        from huggingface_hub import constants as _hf_constants
+
+        _hf_constants.HF_HUB_DISABLE_SYMLINKS = True
+    except ImportError:
+        pass
 
 
 _configure_huggingface_env()
