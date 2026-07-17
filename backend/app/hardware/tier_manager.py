@@ -13,13 +13,17 @@ class TierConfig:
     n_gpu_layers: int
     stt_model: str
     tts_engine: str  # "parler_gpu" | "parler_cpu" | "kokoro"
+    # llama-server --ctx-size. Larger on GPU tiers so spare VRAM becomes
+    # longer conversation memory instead of sitting idle.
+    ctx_size: int = 4096
 
 
+# n_gpu_layers=-1 means "offload every layer" in llama.cpp.
 _TIER_TABLE = {
-    "S": TierConfig("S", "lfm2.5-1.2b-bf16.gguf", 99, "moonshine-base", "parler_gpu"),
-    "A": TierConfig("A", "lfm2.5-1.2b-q8_0.gguf", 99, "moonshine-base", "parler_cpu"),
-    "B": TierConfig("B", "lfm2.5-1.2b-q6_k.gguf", 0, "moonshine-tiny", "kokoro"),
-    "C": TierConfig("C", "lfm2.5-1.2b-q4_k_m.gguf", 0, "moonshine-tiny", "kokoro"),
+    "S": TierConfig("S", "lfm2.5-1.2b-bf16.gguf", -1, "moonshine-base", "parler_gpu", 16384),
+    "A": TierConfig("A", "lfm2.5-1.2b-q8_0.gguf", -1, "moonshine-base", "parler_gpu", 8192),
+    "B": TierConfig("B", "lfm2.5-1.2b-q6_k.gguf", 0, "moonshine-tiny", "kokoro", 4096),
+    "C": TierConfig("C", "lfm2.5-1.2b-q4_k_m.gguf", 0, "moonshine-tiny", "kokoro", 4096),
 }
 
 

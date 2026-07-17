@@ -4,6 +4,7 @@ Phase 1: mic -> Moonshine -> LFM2.5 -> Parler-TTS/Kokoro -> speaker).
 """
 
 import argparse
+import asyncio
 import io
 import json
 import logging
@@ -95,12 +96,18 @@ def _profile_context_addition(profile: UserProfile) -> str:
 def _pcm_to_wav_bytes(audio: np.ndarray, sample_rate: int) -> bytes:
     """Wraps float32 PCM as an in-memory WAV file (stdlib `wave`, no new
     dependency) — used for on-demand replay of a past reply."""
+    arr = np.asarray(audio, dtype=np.float32).reshape(-1)
+    if not np.isfinite(arr).all():
+        arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+    peak = float(np.max(np.abs(arr))) if arr.size else 0.0
+    if peak > 1.0:
+        arr = arr / peak
+    pcm16 = (np.clip(arr, -1.0, 1.0) * 32767.0).astype(np.int16)
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wav_file:
         wav_file.setnchannels(1)
         wav_file.setsampwidth(2)
-        wav_file.setframerate(sample_rate)
-        pcm16 = (np.clip(audio, -1.0, 1.0) * 32767).astype(np.int16)
+        wav_file.setframerate(int(sample_rate))
         wav_file.writeframes(pcm16.tobytes())
     return buf.getvalue()
 
@@ -214,6 +221,31 @@ class Pipeline:
         see project-plan.md's text-input support notes."""
         return self._handle_turn(text, memory)
 
+    def _synthesize_required(self, reply_text: str) -> tuple[np.ndarray, int]:
+        """Voice is the product — synthesize with one retry, then raise.
+        Never return a text-only companion turn when speak_replies is on."""
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                reply_audio = self.tts.synthesize(reply_text, voice=self.profile.preferred_voice)
+                pcm = np.asarray(reply_audio, dtype=np.float32).reshape(-1)
+                if pcm.size == 0:
+                    raise RuntimeError("TTS returned empty audio")
+                return pcm, self.tts.sample_rate
+            except Exception as exc:
+                last_exc = exc
+                logger.exception("TTS attempt %s failed", attempt + 1)
+        raise RuntimeError("TTS failed after retries") from last_exc
+
+    def _commit_turn(
+        self, memory: ShortTermMemory, transcript: str, reply_text: str
+    ) -> int:
+        turn_id = memory.add_turn(transcript, reply_text)
+        chat_history.record_turn(self.profile.user_id, memory.session_id, turn_id, "user", transcript)
+        return chat_history.record_turn(
+            self.profile.user_id, memory.session_id, turn_id, "assistant", reply_text
+        )
+
     def _handle_turn(self, transcript: str, memory: ShortTermMemory) -> tuple[str, str, np.ndarray | None, int, int]:
         crisis_match = crisis_detector.detect(transcript)
         if crisis_match is not None:
@@ -223,39 +255,29 @@ class Pipeline:
 
         messages = self._build_messages(memory, transcript)
         reply_text = self._run_agent_with_self_check(messages)
-        turn_id = memory.add_turn(transcript, reply_text)
-        chat_history.record_turn(self.profile.user_id, memory.session_id, turn_id, "user", transcript)
-        turn_db_id = chat_history.record_turn(
-            self.profile.user_id, memory.session_id, turn_id, "assistant", reply_text
-        )
         if not self.profile.speak_replies:
+            turn_db_id = self._commit_turn(memory, transcript, reply_text)
             return transcript, reply_text, None, 0, turn_db_id
-        reply_audio = self.tts.synthesize(reply_text, voice=self.profile.preferred_voice)
-        return transcript, reply_text, reply_audio, self.tts.sample_rate, turn_db_id
+        # Synthesize before committing history so a failed voice turn does not
+        # leave a text-only reply that only shows up after restart.
+        reply_audio, sample_rate = self._synthesize_required(reply_text)
+        turn_db_id = self._commit_turn(memory, transcript, reply_text)
+        return transcript, reply_text, reply_audio, sample_rate, turn_db_id
 
     def _respond_to_crisis(
         self, transcript: str, crisis_match: crisis_detector.CrisisMatch, memory: ShortTermMemory
     ) -> tuple[str, str, np.ndarray | None, int, int]:
         """On a crisis-detector match: skip the LLM in favor of the fixed
         SAFETY_RESPONSE_TEXT (project-plan.md §9). Speak it via the live TTS
-        engine so the words match the text; if TTS fails, still return the
-        text (audio None) rather than crashing on a missing placeholder wav."""
+        engine so the words match the text."""
         crisis_detector.record_event(crisis_match, self.profile.user_id)
         try:
             escalation.maybe_escalate(self.profile.user_id, reason=crisis_match.severity)
         except Exception:
             logger.exception("escalation check failed — safety response still proceeds")
-        turn_id = memory.add_turn(transcript, SAFETY_RESPONSE_TEXT)
-        chat_history.record_turn(self.profile.user_id, memory.session_id, turn_id, "user", transcript)
-        turn_db_id = chat_history.record_turn(
-            self.profile.user_id, memory.session_id, turn_id, "assistant", SAFETY_RESPONSE_TEXT
-        )
-        try:
-            reply_audio = self.tts.synthesize(SAFETY_RESPONSE_TEXT, voice=self.profile.preferred_voice)
-            return transcript, SAFETY_RESPONSE_TEXT, reply_audio, self.tts.sample_rate, turn_db_id
-        except Exception:
-            logger.exception("crisis TTS failed — returning safety text without audio")
-            return transcript, SAFETY_RESPONSE_TEXT, None, 0, turn_db_id
+        reply_audio, sample_rate = self._synthesize_required(SAFETY_RESPONSE_TEXT)
+        turn_db_id = self._commit_turn(memory, transcript, SAFETY_RESPONSE_TEXT)
+        return transcript, SAFETY_RESPONSE_TEXT, reply_audio, sample_rate, turn_db_id
 
     def _checkin_prompt_line(self) -> str:
         """Computed fresh each turn (single cheap row read) rather than
@@ -394,6 +416,8 @@ def get_status() -> dict:
         "llm_gguf": tier.llm_gguf,
         "stt_model": tier.stt_model,
         "tts_engine": tier.tts_engine,
+        "n_gpu_layers": tier.n_gpu_layers,
+        "ctx_size": tier.ctx_size,
         "hardware": detect_hardware(),
     }
 
@@ -644,8 +668,16 @@ def api_replay_chat_history(row_id: int) -> Response:
         raise HTTPException(status_code=404, detail="turn not found")
     if turn["role"] != "assistant":
         raise HTTPException(status_code=400, detail="only assistant replies can be replayed")
-    audio = _pipeline.tts.synthesize(turn["content"], voice=_pipeline.profile.preferred_voice)
-    wav_bytes = _pcm_to_wav_bytes(audio, _pipeline.tts.sample_rate)
+    try:
+        audio = _pipeline.tts.synthesize(turn["content"], voice=_pipeline.profile.preferred_voice)
+        if audio is None or len(np.asarray(audio).reshape(-1)) == 0:
+            raise RuntimeError("TTS returned empty audio")
+        wav_bytes = _pcm_to_wav_bytes(audio, _pipeline.tts.sample_rate)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("TTS replay failed for turn %s", row_id)
+        raise HTTPException(status_code=500, detail=f"TTS failed: {exc}") from exc
     return Response(content=wav_bytes, media_type="audio/wav")
 
 
@@ -665,9 +697,11 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     with one text frame (JSON metadata: transcript, reply_text,
     sample_rate, turn_db_id, has_audio) followed by a binary frame (mono
     float32 PCM reply audio) only when has_audio is true — skipped
-    entirely when the profile has speak_replies off. Short-term memory is
-    scoped to this one connection; long-term memory maintenance runs once,
-    silently, when it ends — see project-plan.md §5."""
+    entirely when the profile has speak_replies off. When speak_replies is
+    on, audio is synthesized before any reply frame is sent (voice is the
+    product). Short-term memory is scoped to this one connection; long-term
+    memory maintenance runs once, silently, when it ends — see
+    project-plan.md §5."""
     await ws.accept()
     _require_pipeline()
     memory = _pipeline.new_session_memory()
@@ -676,23 +710,74 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             message = await ws.receive()
             if message.get("type") == "websocket.disconnect":
                 raise WebSocketDisconnect
-            if "bytes" in message and message["bytes"] is not None:
-                audio = np.frombuffer(message["bytes"], dtype=np.float32)
-                transcript, reply_text, reply_audio, sample_rate, turn_db_id = _pipeline.respond(audio, memory)
-            else:
-                payload = json.loads(message["text"])
-                transcript, reply_text, reply_audio, sample_rate, turn_db_id = _pipeline.respond_to_text(
-                    payload["text"], memory
+            try:
+                if "bytes" in message and message["bytes"] is not None:
+                    audio = np.frombuffer(message["bytes"], dtype=np.float32)
+                    transcript, reply_text, reply_audio, sample_rate, turn_db_id = await asyncio.to_thread(
+                        _pipeline.respond, audio, memory
+                    )
+                else:
+                    payload = json.loads(message["text"])
+                    transcript, reply_text, reply_audio, sample_rate, turn_db_id = await asyncio.to_thread(
+                        _pipeline.respond_to_text, payload["text"], memory
+                    )
+            except Exception:
+                logger.exception("turn failed — notifying client without dropping the socket")
+                await ws.send_text(
+                    json.dumps(
+                        {
+                            "type": "error",
+                            "message": "I couldn't speak that reply — please try again.",
+                        }
+                    )
                 )
-            await ws.send_text(json.dumps({
-                "transcript": transcript,
-                "reply_text": reply_text,
-                "sample_rate": sample_rate,
-                "turn_db_id": turn_db_id,
-                "has_audio": reply_audio is not None,
-            }))
-            if reply_audio is not None:
-                await ws.send_bytes(reply_audio.astype(np.float32).tobytes())
+                continue
+
+            has_audio = reply_audio is not None
+            if _pipeline.profile.speak_replies and not has_audio:
+                # speak_replies on must never deliver text-only companion turns.
+                await ws.send_text(
+                    json.dumps(
+                        {
+                            "type": "error",
+                            "message": "I couldn't speak that reply — please try again.",
+                        }
+                    )
+                )
+                continue
+
+            await ws.send_text(
+                json.dumps(
+                    {
+                        "transcript": transcript,
+                        "reply_text": reply_text,
+                        "sample_rate": sample_rate,
+                        "turn_db_id": turn_db_id,
+                        "has_audio": has_audio,
+                    }
+                )
+            )
+            if has_audio:
+                try:
+                    pcm = np.asarray(reply_audio, dtype=np.float32).reshape(-1)
+                    await ws.send_bytes(pcm.tobytes())
+                except Exception:
+                    logger.exception(
+                        "failed to send reply audio for turn %s",
+                        turn_db_id,
+                    )
+                    await ws.send_text(
+                        json.dumps(
+                            {
+                                "type": "error",
+                                "message": "I couldn't speak that reply — please try again.",
+                            }
+                        )
+                    )
+    except WebSocketDisconnect:
+        logger.info("client disconnected")
+    finally:
+        _pipeline.run_maintenance(memory)
     except WebSocketDisconnect:
         logger.info("client disconnected")
     finally:

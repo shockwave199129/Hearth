@@ -22,6 +22,8 @@ interface ChatHistoryRow {
 }
 
 interface TurnMeta {
+  type?: string;
+  message?: string;
   transcript: string;
   reply_text: string;
   sample_rate: number;
@@ -187,6 +189,8 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
       setIsThinking(false);
       addTurn(meta);
 
+      if (!audio.length || !meta.sample_rate) return;
+
       if (!playbackCtxRef.current) playbackCtxRef.current = new AudioContext();
       const ctx = playbackCtxRef.current;
       if (ctx.state === "suspended") void ctx.resume();
@@ -220,7 +224,14 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
         setSpeakingAmplitude(0);
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
       };
-      source.start();
+      try {
+        source.start();
+      } catch (err) {
+        console.error("[useCompanionSocket] reply playback failed", err);
+        setIsSpeaking(false);
+        setSpeakingAmplitude(0);
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      }
     },
     [addTurn],
   );
@@ -287,7 +298,16 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
             console.error("[useCompanionSocket] bad JSON frame", err);
             return;
           }
+          if (meta.type === "error") {
+            pendingMetaRef.current = null;
+            setIsThinking(false);
+            console.error("[useCompanionSocket] turn error", meta.message);
+            return;
+          }
+          // Text-only when speak_replies is off. When audio is expected,
+          // wait for the binary frame so the turn appears with voice.
           if (!meta.has_audio) {
+            pendingMetaRef.current = null;
             setIsThinking(false);
             addTurn(meta);
             return;

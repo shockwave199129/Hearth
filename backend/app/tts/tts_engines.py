@@ -37,11 +37,15 @@ class ParlerEngine(TtsEngine):
 
     def __init__(self, device: str):
         # deferred: heavy torch/transformers import
+        import logging
+
         import torch
         from parler_tts import ParlerTTSForConditionalGeneration
         from transformers import AutoTokenizer
 
         from app.setup.models import ensure_parler_model
+
+        log = logging.getLogger("hearth")
 
         # tier_manager.py's tier pick is based on detected hardware (VRAM),
         # not on whether the installed `torch` build actually has CUDA
@@ -53,9 +57,7 @@ class ParlerEngine(TtsEngine):
         # say why — the tier's hardware detection was right, the torch
         # install just doesn't match it.
         if device == "cuda" and not torch.cuda.is_available():
-            import logging
-
-            logging.getLogger("hearth").warning(
+            log.warning(
                 "Tier detection picked device=cuda but torch.cuda.is_available() "
                 "is False — falling back to CPU. Install a CUDA-enabled torch "
                 "build (e.g. `pip install torch --index-url "
@@ -66,17 +68,38 @@ class ParlerEngine(TtsEngine):
 
         model_dir = str(ensure_parler_model())
         self._device = device
+        # fp16 on CUDA: faster synthesize, leaves headroom for the LLM ctx.
+        # Weights still live on the GPU — only the sampling Generator may
+        # fall back to CPU if CUDA generators misbehave.
+        dtype = torch.float16 if device == "cuda" else torch.float32
         self._model = ParlerTTSForConditionalGeneration.from_pretrained(
-            model_dir
+            model_dir, torch_dtype=dtype
         ).to(device)
+        self._model.eval()
         self._tokenizer = AutoTokenizer.from_pretrained(model_dir)
         self.sample_rate = self._model.config.sampling_rate
+        if device == "cuda":
+            torch.backends.cuda.matmul.allow_tf32 = True
+            try:
+                free_b, total_b = torch.cuda.mem_get_info()
+                log.info(
+                    "Parler TTS on cuda (%s), VRAM free/total after load: %.1f / %.1f GiB",
+                    dtype,
+                    free_b / (1024**3),
+                    total_b / (1024**3),
+                )
+            except Exception:
+                log.info("Parler TTS on cuda (%s)", dtype)
+        else:
+            log.info("Parler TTS on cpu (%s)", dtype)
 
     def synthesize(self, text: str, voice: str) -> np.ndarray:
         import hashlib
+        import logging
 
         import torch
 
+        log = logging.getLogger("hearth")
         description = self._VOICE_DESCRIPTIONS.get(
             voice, self._VOICE_DESCRIPTIONS["female"]
         )
@@ -87,18 +110,68 @@ class ParlerEngine(TtsEngine):
             self._device
         )
         # Stable seed from voice+text (sha256, not Python hash()) so live
-        # chat and days-later replay use the same Parler sampling path —
-        # same preferred_voice description + same seed ⇒ consistent speaker.
+        # chat and days-later replay use the same Parler sampling path.
         seed = int(hashlib.sha256(f"{voice}\0{text}".encode()).hexdigest()[:8], 16)
-        generator = torch.Generator(device=self._device).manual_seed(seed)
-        with torch.no_grad():
-            generation = self._model.generate(
+
+        def _greedy() -> torch.Tensor:
+            return self._model.generate(
                 input_ids=input_ids,
                 prompt_input_ids=prompt_input_ids,
-                do_sample=True,
-                generator=generator,
+                do_sample=False,
             )
-        return generation.cpu().numpy().squeeze()
+
+        def _sample(generator: torch.Generator | None) -> torch.Tensor:
+            kwargs = {
+                "input_ids": input_ids,
+                "prompt_input_ids": prompt_input_ids,
+                "do_sample": True,
+                "temperature": 0.7,
+            }
+            if generator is not None:
+                kwargs["generator"] = generator
+            return self._model.generate(**kwargs)
+
+        with torch.inference_mode():
+            generation = None
+            if self._device.startswith("cuda"):
+                # Prefer CUDA sampling — model weights stay on GPU either way.
+                try:
+                    generation = _sample(
+                        torch.Generator(device=self._device).manual_seed(seed)
+                    )
+                except Exception:
+                    log.exception(
+                        "Parler CUDA generator sampling failed — retrying with cuda seed"
+                    )
+                    try:
+                        torch.manual_seed(seed)
+                        torch.cuda.manual_seed_all(seed)
+                        generation = _sample(None)
+                    except Exception:
+                        log.exception(
+                            "Parler CUDA sampling failed — retrying greedy on GPU"
+                        )
+                        generation = _greedy()
+            else:
+                try:
+                    generation = _sample(
+                        torch.Generator(device="cpu").manual_seed(seed)
+                    )
+                except Exception:
+                    log.exception("Parler CPU sampling failed — retrying greedy")
+                    generation = _greedy()
+
+        audio_arr = (
+            np.asarray(generation.detach().cpu().numpy()).reshape(-1).astype(np.float32)
+        )
+        if not np.isfinite(audio_arr).all():
+            audio_arr = np.nan_to_num(audio_arr, nan=0.0, posinf=0.0, neginf=0.0)
+        peak = float(np.max(np.abs(audio_arr))) if audio_arr.size else 0.0
+        if peak > 1.0:
+            audio_arr = audio_arr / peak
+        if audio_arr.size == 0:
+            raise RuntimeError("Parler returned empty audio")
+        return audio_arr
 
 
 class KokoroEngine(TtsEngine):
@@ -138,7 +211,15 @@ class KokoroEngine(TtsEngine):
                 "speed": np.ones(1, dtype=np.float32) * 1.0,
             },
         )
-        return outputs[0]
+        audio_arr = np.asarray(outputs[0], dtype=np.float32).reshape(-1)
+        if not np.isfinite(audio_arr).all():
+            audio_arr = np.nan_to_num(audio_arr, nan=0.0, posinf=0.0, neginf=0.0)
+        peak = float(np.max(np.abs(audio_arr))) if audio_arr.size else 0.0
+        if peak > 1.0:
+            audio_arr = audio_arr / peak
+        if audio_arr.size == 0:
+            raise RuntimeError("Kokoro returned empty audio")
+        return audio_arr
 
 
 def get_tts_engine(tier: TierConfig) -> TtsEngine:

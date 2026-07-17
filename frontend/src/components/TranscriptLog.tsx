@@ -62,14 +62,34 @@ export function TranscriptLog({
     setPlayingId(turnDbId);
     try {
       const res = await backendFetch(`/api/chat_history/${turnDbId}/audio`);
-      if (!res.ok) return;
-      const url = URL.createObjectURL(await res.blob());
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        console.error("[TranscriptLog] replay TTS failed", res.status, detail);
+        return;
+      }
+      const blob = await res.blob();
+      if (blob.size < 44) {
+        console.error("[TranscriptLog] replay returned empty/short WAV", blob.size);
+        return;
+      }
+      const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setPlayingId(null);
+      };
+      audio.onerror = () => {
+        console.error("[TranscriptLog] replay <audio> error");
+        URL.revokeObjectURL(url);
+        setPlayingId(null);
+      };
       await audio.play();
-    } finally {
-      setPlayingId(null);
+      // Keep playingId until onended — finally would clear it immediately.
+      return;
+    } catch (err) {
+      console.error("[TranscriptLog] replay exception", err);
     }
+    setPlayingId(null);
   };
 
   if (turns.length === 0) {

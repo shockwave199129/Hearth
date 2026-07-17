@@ -116,7 +116,7 @@ class LlmServer(LlamaCppProcess):
             extra_args=[
                 "--model", llm_path,
                 "--n-gpu-layers", str(tier.n_gpu_layers),
-                "--ctx-size", "4096",
+                "--ctx-size", str(tier.ctx_size),
                 "--jinja",  # needed for tool-call parsing, see memory/tools.py
             ],
         )
