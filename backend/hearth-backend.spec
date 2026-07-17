@@ -20,11 +20,31 @@ from pathlib import Path
 
 # Import the core PyInstaller building classes required for the spec.
 # These were previously missing, which can lead to runtime errors.
+import sys
+
 from PyInstaller.building.build_main import Analysis, PYZ, EXE, COLLECT
 
 from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
+
+# Stdlib names that are never useful in a headless server freeze (GUI /
+# demos / the test suite). Everything else from sys.stdlib_module_names is
+# force-included below — see the hiddenimports note.
+_STDLIB_EXCLUDE = {
+    "antigravity",
+    "this",
+    "turtle",
+    "turtledemo",
+    "tkinter",
+    "_tkinter",
+    "idlelib",
+    "test",
+    "lib2to3",
+    "ensurepip",
+    "venv",
+    "pydoc_data",
+}
 
 # NOTE: `__file__` is not defined in a PyInstaller spec's exec namespace —
 # use the `SPECPATH` global PyInstaller injects instead (caught by actually
@@ -71,26 +91,12 @@ hiddenimports = [
     "sqlcipher3.dbapi2",
     "moonshine_voice",
     "moonshine_voice.transcriber",
-    # Stdlib modules not referenced by the thin freeze's import graph, but
-    # pulled in at first-run after parler-tts / descript-audiotools land in
-    # backend-deps (audiotools -> ipython -> timeit / pickletools / …).
-    # Without these, Pipeline() dies with "No module named '…'" after setup
-    # packages succeed (seen in the field for timeit, then pickletools).
-    "timeit",
-    "pydoc",
-    "doctest",
-    "pickletools",
-    "code",
-    "codeop",
-    "pdb",
-    "bdb",
-    "cmd",
-    "profile",
-    "cProfile",
-    "pstats",
-    "rlcompleter",
-    "dis",
-    "opcode",
+    # Post-setup packages land in backend-deps (transformers, ipython via
+    # audiotools, …) and import stdlib modules the thin Analysis graph never
+    # sees — field failures: timeit, pickletools, filecmp. Including nearly
+    # all of sys.stdlib_module_names stops the whack-a-mole; missing names
+    # on a given OS just warn at freeze time ("Hidden import not found").
+    *sorted(sys.stdlib_module_names - _STDLIB_EXCLUDE),
 ]
 
 # Packages with native extensions / plugin-style dynamic imports that

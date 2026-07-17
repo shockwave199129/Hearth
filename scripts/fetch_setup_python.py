@@ -9,14 +9,16 @@ Unlike fetch_llama_cpp.py, this deliberately does NOT extract the archive
 here — backend/app/setup/installer.py extracts it lazily on the user's own
 machine at first setup, so the installer itself only carries the
 compressed ~24-106MB archive, not the larger extracted tree. This
-standalone Python is used only to run `pip install` for the hardware-
-matched torch/onnxruntime build during first-run setup — see the project
-setup plan for why (PyInstaller-frozen apps don't reliably support
-installing new packages into themselves at runtime).
+standalone Python is used only to bootstrap `uv` and run
+`python -m uv pip install --target …` for the hardware-matched
+torch/onnxruntime build during first-run setup — see the project setup
+plan for why (PyInstaller-frozen apps don't reliably support installing
+new packages into themselves at runtime).
 
 Pin a specific release tag rather than "latest" — re-verify this tag and
 the _ASSET_BY_PLATFORM map periodically.
 """
+
 import platform
 import sys
 from pathlib import Path
@@ -31,12 +33,30 @@ SETUP_PYTHON_DIR = RESOURCES_DIR / "setup-python"
 PBS_TAG = "20260623"
 PBS_PYTHON_VERSION = "3.12.13"
 _ASSET_BY_PLATFORM = {
-    ("Linux", "x86_64"): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-x86_64-unknown-linux-gnu-install_only.tar.gz",
-    ("Linux", "aarch64"): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-aarch64-unknown-linux-gnu-install_only.tar.gz",
-    ("Windows", "AMD64"): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-x86_64-pc-windows-msvc-install_only.tar.gz",
-    ("Windows", "ARM64"): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-aarch64-pc-windows-msvc-install_only.tar.gz",
-    ("Darwin", "arm64"): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-aarch64-apple-darwin-install_only.tar.gz",
-    ("Darwin", "x86_64"): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-x86_64-apple-darwin-install_only.tar.gz",
+    (
+        "Linux",
+        "x86_64",
+    ): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-x86_64-unknown-linux-gnu-install_only.tar.gz",
+    (
+        "Linux",
+        "aarch64",
+    ): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-aarch64-unknown-linux-gnu-install_only.tar.gz",
+    (
+        "Windows",
+        "AMD64",
+    ): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-x86_64-pc-windows-msvc-install_only.tar.gz",
+    (
+        "Windows",
+        "ARM64",
+    ): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-aarch64-pc-windows-msvc-install_only.tar.gz",
+    (
+        "Darwin",
+        "arm64",
+    ): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-aarch64-apple-darwin-install_only.tar.gz",
+    (
+        "Darwin",
+        "x86_64",
+    ): f"cpython-{PBS_PYTHON_VERSION}+{PBS_TAG}-x86_64-apple-darwin-install_only.tar.gz",
 }
 
 
@@ -59,7 +79,9 @@ def main() -> None:
     key = _current_platform_key()
     asset = _ASSET_BY_PLATFORM.get(key)
     if asset is None:
-        print(f"No bundled setup-python asset mapped for platform {key}.", file=sys.stderr)
+        print(
+            f"No bundled setup-python asset mapped for platform {key}.", file=sys.stderr
+        )
         print(f"Supported: {list(_ASSET_BY_PLATFORM)}", file=sys.stderr)
         sys.exit(1)
 

@@ -1,14 +1,15 @@
 """Orchestrates the actual hardware-matched package install: extracts the
-bundled standalone Python (once), runs its pip to install into
-BACKEND_DEPS_DIR, and reports progress for /api/setup/* to poll.
+bundled standalone Python (once), bootstraps `uv` into that interpreter,
+runs `python -m uv pip install --target BACKEND_DEPS_DIR`, and reports
+progress for /api/setup/* to poll.
 
 Uses a real separate Python interpreter for this rather than trying to
-invoke pip from within the already-frozen PyInstaller process — PyInstaller
-apps don't reliably support installing new packages into themselves at
-runtime (pip has many dynamic import patterns static analysis can miss),
-while a genuinely separate interpreter with real pip sidesteps that
-entirely. See fetch_setup_python.py for where it comes from.
+invoke pip/uv from within the already-frozen PyInstaller process —
+PyInstaller apps don't reliably support installing new packages into
+themselves at runtime, while a genuinely separate interpreter sidesteps
+that entirely. See fetch_setup_python.py for where it comes from.
 """
+
 import platform
 import shutil
 import subprocess
@@ -17,7 +18,12 @@ import tarfile
 import threading
 from pathlib import Path
 
-from app.config import BACKEND_DEPS_DIR, BACKEND_DIR, SETUP_PYTHON_EXTRACT_DIR, extend_backend_deps_path
+from app.config import (
+    BACKEND_DEPS_DIR,
+    BACKEND_DIR,
+    SETUP_PYTHON_EXTRACT_DIR,
+    extend_backend_deps_path,
+)
 
 
 def _windows_no_window_kwargs() -> dict:
@@ -58,8 +64,10 @@ def _expected_setup_python_binary() -> Path:
     # guaranteed enumeration order, risking silently invoking the wrong
     # one. Confirmed both real paths below by inspecting each platform's
     # actual archive contents (`tar -tzf`), not assumed from docs alone.
-    return SETUP_PYTHON_EXTRACT_DIR / "python" / (
-        "python.exe" if platform.system() == "Windows" else "bin/python3"
+    return (
+        SETUP_PYTHON_EXTRACT_DIR
+        / "python"
+        / ("python.exe" if platform.system() == "Windows" else "bin/python3")
     )
 
 
@@ -89,7 +97,9 @@ def _setup_python_bin() -> Path:
 
     _extract_setup_python()
     if not binary.exists():
-        raise SetupError(f"extracted {SETUP_PYTHON_EXTRACT_DIR} but expected binary {binary} is missing")
+        raise SetupError(
+            f"extracted {SETUP_PYTHON_EXTRACT_DIR} but expected binary {binary} is missing"
+        )
     return binary
 
 
@@ -128,23 +138,16 @@ class InstallProgress:
 
     def snapshot(self) -> dict:
         with self._lock:
-            return {"step": self.step, "log_tail": list(self.log_tail), "error": self.error}
+            return {
+                "step": self.step,
+                "log_tail": list(self.log_tail),
+                "error": self.error,
+            }
 
 
-def install_packages(packages: list[str], index_url: str | None, progress: InstallProgress) -> None:
-    """Runs `<bundled-python> -m pip install --target BACKEND_DEPS_DIR
-    <packages>` via subprocess, streaming output into `progress`. Re-running
-    this (e.g. after a partial failure) is safe — pip --target skips
-    already-satisfied packages on its own, same idempotency scripts/setup.py
-    already relies on for model downloads."""
-    python_bin = _setup_python_bin()
-    BACKEND_DEPS_DIR.mkdir(parents=True, exist_ok=True)
-
-    cmd = [str(python_bin), "-m", "pip", "install", "--target", str(BACKEND_DEPS_DIR)]
-    if index_url:
-        cmd += ["--index-url", index_url]
-    cmd += packages
-
+def _run_logged(
+    cmd: list[str], progress: InstallProgress, *, error_prefix: str
+) -> None:
     progress.append_log(f"running: {' '.join(cmd)}")
     proc = subprocess.Popen(
         cmd,
@@ -157,7 +160,63 @@ def install_packages(packages: list[str], index_url: str | None, progress: Insta
         progress.append_log(line.rstrip())
     returncode = proc.wait()
     if returncode != 0:
-        raise SetupError(f"pip install exited with code {returncode} — see log_tail for details")
+        raise SetupError(
+            f"{error_prefix} (exit {returncode}) — see log_tail for details"
+        )
+
+
+def _ensure_uv(python_bin: Path, progress: InstallProgress) -> None:
+    """Install `uv` into the bundled interpreter's own site-packages once.
+
+    Not installed into BACKEND_DEPS_DIR — that tree is only for packages the
+    frozen app imports at runtime. Re-check is cheap (`python -m uv --version`).
+    """
+    check = subprocess.run(
+        [str(python_bin), "-m", "uv", "--version"],
+        capture_output=True,
+        text=True,
+        **_windows_no_window_kwargs(),
+    )
+    if check.returncode == 0:
+        version = (check.stdout or check.stderr or "").strip()
+        progress.append_log(version or "uv already available")
+        return
+
+    _run_logged(
+        [str(python_bin), "-m", "pip", "install", "--upgrade", "uv"],
+        progress,
+        error_prefix="bootstrapping uv into bundled Python failed",
+    )
+
+
+def install_packages(
+    packages: list[str], index_url: str | None, progress: InstallProgress
+) -> None:
+    """Runs `<bundled-python> -m uv pip install --target BACKEND_DEPS_DIR
+    <packages>` via subprocess, streaming output into `progress`. Re-running
+    this (e.g. after a partial failure) is safe — uv/pip --target skips
+    already-satisfied packages on its own, same idempotency scripts/setup.py
+    already relies on for model downloads."""
+    python_bin = _setup_python_bin()
+    BACKEND_DEPS_DIR.mkdir(parents=True, exist_ok=True)
+    _ensure_uv(python_bin, progress)
+
+    cmd = [
+        str(python_bin),
+        "-m",
+        "uv",
+        "pip",
+        "install",
+        "--python",
+        str(python_bin),
+        "--target",
+        str(BACKEND_DEPS_DIR),
+    ]
+    if index_url:
+        cmd += ["--index-url", index_url]
+    cmd += packages
+
+    _run_logged(cmd, progress, error_prefix="uv pip install failed")
 
     # Makes BACKEND_DEPS_DIR importable in the current process right away —
     # no restart needed: a not-yet-attempted import isn't negatively cached

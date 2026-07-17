@@ -135,7 +135,8 @@ DATA_DIR = USER_DATA_DIR / "data"
 # sys.path without needing a restart).
 BACKEND_DEPS_DIR = USER_DATA_DIR / "backend-deps"
 
-# Extracted standalone Python used only for first-run pip installs — must be
+# Extracted standalone Python used only for first-run `uv pip install`s
+# (and a one-time `pip install uv` into this interpreter) — must be
 # writable, so it lives under USER_DATA_DIR in the packaged app (not inside
 # the read-only install / bundle tree).
 SETUP_PYTHON_EXTRACT_DIR = USER_DATA_DIR / "setup-python"
