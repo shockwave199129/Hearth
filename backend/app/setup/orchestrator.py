@@ -111,16 +111,12 @@ def run_setup(progress: InstallProgress) -> None:
             # already installed rather than re-resolved from plain PyPI —
             # verified this exact sequencing this session.
             install_packages(["torch", "torchaudio"], variant.torch_index_url, progress)
-            # numpy pin before parler-tts: _pip_lines skips `-r common`, so
-            # the pin must be installed explicitly first or parler's numba
-            # chain backtracks to llvmlite 0.36 (Python<3.10) on 3.12.
-            # See requirements-gpu.txt.
-            gpu_lines = _pip_lines(REQUIREMENTS_GPU)
-            numpy_lines = [line for line in gpu_lines if line.startswith("numpy")]
-            other_gpu_lines = [line for line in gpu_lines if not line.startswith("numpy")]
-            if numpy_lines:
-                install_packages(numpy_lines, None, progress)
-            install_packages(other_gpu_lines, None, progress)
+            # numpy pin in the SAME pip invocation as parler-tts: _pip_lines
+            # skips `-r common`, and a separate numpy-only install is not
+            # enough — parler's resolver can still pull an unbounded numpy
+            # (and a second torch from plain PyPI) unless the pin is visible
+            # in this resolve. See requirements-gpu.txt.
+            install_packages(_pip_lines(REQUIREMENTS_GPU), None, progress)
         else:
             onnxruntime_line = variant.onnxruntime_package  # bare name, no version pin —
             # the GPU-variant onnxruntime packages (onnxruntime-gpu/-rocm/

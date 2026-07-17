@@ -71,6 +71,13 @@ hiddenimports = [
     "sqlcipher3.dbapi2",
     "moonshine_voice",
     "moonshine_voice.transcriber",
+    # Stdlib modules not referenced by the thin freeze's import graph, but
+    # pulled in at first-run after parler-tts / descript-audiotools land in
+    # backend-deps (audiotools -> ipython -> timeit). Without these, Pipeline()
+    # dies with "No module named 'timeit'" after setup packages succeed.
+    "timeit",
+    "pydoc",
+    "doctest",
 ]
 
 # Packages with native extensions / plugin-style dynamic imports that
