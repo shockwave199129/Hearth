@@ -31,9 +31,11 @@ def create(text: str, category: str, user_id: str) -> str:
 
 def _owned_by(mem_id: str, user_id: str) -> bool:
     results = get_collection().get(ids=[mem_id])
-    if not results["ids"]:
+    ids = results.get("ids") or []
+    metas = results.get("metadatas") or []
+    if not ids or not metas:
         return False
-    return results["metadatas"][0].get("user_id") == user_id
+    return metas[0].get("user_id") == user_id
 
 
 def update(mem_id: str, new_text: str, user_id: str) -> None:
@@ -53,14 +55,6 @@ def delete(mem_id: str, user_id: str) -> None:
     get_collection().delete(ids=[mem_id])
 
 
-def delete_all_for_user(user_id: str) -> None:
-    """Cascade helper for profile deletion — see main.py's
-    DELETE /api/profiles/{user_id} handler."""
-    results = get_collection().get(where={"user_id": user_id})
-    if results["ids"]:
-        get_collection().delete(ids=results["ids"])
-
-
 def list_memories(user_id: str, category: str | None = None) -> list[dict]:
     """id + category + a short label only — never the full text, so a
     listing call can't accidentally dump everything into context."""
@@ -71,27 +65,55 @@ def list_memories(user_id: str, category: str | None = None) -> list[dict]:
     else:
         where = {"user_id": user_id}
     results = get_collection().get(where=where)
-    return [
-        {"id": i, "category": m["category"], "label": decrypt(d.encode("latin1"))[:40]}
-        for i, d, m in zip(results["ids"], results["documents"], results["metadatas"])
-    ]
+    # Empty collections often return documents/metadatas as None (not []) —
+    # zip(None, ...) would 500 the Settings → Memory panel.
+    ids = results.get("ids") or []
+    docs = results.get("documents") or []
+    metas = results.get("metadatas") or []
+    out: list[dict] = []
+    for mem_id, doc, meta in zip(ids, docs, metas):
+        if doc is None or meta is None:
+            continue
+        try:
+            label = decrypt(doc.encode("latin1"))[:40]
+        except Exception:
+            label = "(unreadable)"
+        out.append({"id": mem_id, "category": meta.get("category", ""), "label": label})
+    return out
 
 
 def get(mem_id: str, user_id: str) -> dict | None:
     results = get_collection().get(ids=[mem_id])
-    if not results["ids"] or results["metadatas"][0].get("user_id") != user_id:
+    ids = results.get("ids") or []
+    docs = results.get("documents") or []
+    metas = results.get("metadatas") or []
+    if not ids or not docs or not metas or metas[0].get("user_id") != user_id:
         return None
     return {
-        "id": results["ids"][0],
-        "category": results["metadatas"][0]["category"],
-        "text": decrypt(results["documents"][0].encode("latin1")),
+        "id": ids[0],
+        "category": metas[0]["category"],
+        "text": decrypt(docs[0].encode("latin1")),
     }
 
 
 def search(query: str, user_id: str, k: int = 5) -> list[dict]:
-    results = get_collection().query(query_embeddings=[embed(query)], n_results=k, where={"user_id": user_id})
-    ids, docs, metas = results["ids"][0], results["documents"][0], results["metadatas"][0]
+    results = get_collection().query(
+        query_embeddings=[embed(query)], n_results=k, where={"user_id": user_id}
+    )
+    ids = (results.get("ids") or [[]])[0] or []
+    docs = (results.get("documents") or [[]])[0] or []
+    metas = (results.get("metadatas") or [[]])[0] or []
     return [
         {"id": i, "category": m["category"], "text": decrypt(d.encode("latin1"))}
         for i, d, m in zip(ids, docs, metas)
+        if d is not None and m is not None
     ]
+
+
+def delete_all_for_user(user_id: str) -> None:
+    """Cascade helper for profile deletion — see main.py's
+    DELETE /api/profiles/{user_id} handler."""
+    results = get_collection().get(where={"user_id": user_id})
+    ids = results.get("ids") or []
+    if ids:
+        get_collection().delete(ids=ids)

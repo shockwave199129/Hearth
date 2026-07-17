@@ -1,9 +1,7 @@
 import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
-import { Chat } from "./pages/Chat";
 import { Onboarding } from "./pages/Onboarding";
 import { Setup } from "./pages/Setup";
-import { Settings } from "./pages/Settings";
 import { useProfile } from "./hooks/useProfile";
 import { useSetupStatus } from "./hooks/useSetupStatus";
 import "./App.css";
@@ -78,8 +76,8 @@ export function App() {
       <Route path="/" element={<Navigate to={skipOnboarding ? "/chat" : "/onboarding"} replace />} />
       <Route path="/onboarding" element={<OnboardingRoute />} />
       <Route element={<AppShell />}>
-        <Route path="/chat" element={<Chat />} />
-        <Route path="/settings" element={<Settings />} />
+        <Route path="/chat" element={<></>} />
+        <Route path="/settings" element={<></>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

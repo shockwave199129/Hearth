@@ -45,7 +45,14 @@ export function useMemories(): UseMemoriesResult {
         return res.json() as Promise<MemorySummary[]>;
       })
       .then((data) => !cancelled && setMemories(data))
-      .catch((err) => !cancelled && setError(friendlyFetchError(err, "useMemories")))
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("[useMemories]", err);
+        const msg = err instanceof Error && /status \d+/.test(err.message)
+          ? "Couldn't load memories right now."
+          : friendlyFetchError(err, "useMemories");
+        setError(msg);
+      })
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;

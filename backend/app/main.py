@@ -626,16 +626,18 @@ def api_get_safety_status() -> dict:
 
 
 @app.get("/api/chat_history")
-def api_list_chat_history(limit: int = 50) -> list[dict]:
+def api_list_chat_history(limit: int = 40, before_id: int | None = None) -> dict:
+    """Paginated chat rows for the Talk transcript. Newest page by default;
+    pass ``before_id`` (smallest id already shown) to load an older page
+    when the user scrolls up. Response: ``{items, has_more}``."""
     _require_pipeline()
-    return chat_history.list_turns(_pipeline.profile.user_id, limit)
+    return chat_history.list_turns(_pipeline.profile.user_id, limit, before_id)
 
 
 @app.get("/api/chat_history/{row_id}/audio")
 def api_replay_chat_history(row_id: int) -> Response:
-    """Re-synthesizes a stored past reply on demand via the normal TTS
-    engine — no audio files are cached anywhere (see project-plan.md's
-    audio_cache discussion; this replaces that with plain re-synthesis)."""
+    """Re-synthesize the stored reply text with the profile's preferred
+    voice (same TTS path as live chat). No audio files are kept on disk."""
     _require_pipeline()
     turn = chat_history.get_turn(_pipeline.profile.user_id, row_id)
     if turn is None:

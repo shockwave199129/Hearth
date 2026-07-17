@@ -58,3 +58,12 @@ def encrypt(text: str) -> bytes:
 
 def decrypt(token: bytes) -> str:
     return _crypto.decrypt(token)
+
+
+def encrypt_bytes(data: bytes) -> bytes:
+    """Fernet-encrypt raw bytes (e.g. cached TTS WAV for identical replay)."""
+    return _crypto.fernet.encrypt(data)
+
+
+def decrypt_bytes(token: bytes) -> bytes:
+    return _crypto.fernet.decrypt(token)

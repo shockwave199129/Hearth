@@ -1,12 +1,20 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import "./AppShell.css";
 import { TierBadge } from "./TierBadge";
 import { useTierStatus } from "../hooks/useTierStatus";
 import { useProfile } from "../hooks/useProfile";
+import { Chat } from "../pages/Chat";
+import { Settings } from "../pages/Settings";
 
+/** Shell keeps Chat mounted while Settings is open so the live transcript
+ * and WebSocket survive Talk ↔ Settings navigation (Outlet alone would
+ * unmount Chat and wipe in-memory turns). */
 export function AppShell() {
   const { status, error: tierError } = useTierStatus();
   const { profile } = useProfile();
+  const location = useLocation();
+  const onChat = location.pathname === "/chat";
+  const onSettings = location.pathname === "/settings";
 
   return (
     <div className="app-shell">
@@ -33,6 +41,14 @@ export function AppShell() {
         </div>
       </nav>
       <main className="app-shell__content">
+        <div className="app-shell__view" hidden={!onChat}>
+          <Chat />
+        </div>
+        <div className="app-shell__view" hidden={!onSettings}>
+          <Settings />
+        </div>
+        {/* Keep RR outlet for nested routes if added later; chat/settings
+            are rendered above so they stay mounted across nav. */}
         <Outlet />
       </main>
     </div>

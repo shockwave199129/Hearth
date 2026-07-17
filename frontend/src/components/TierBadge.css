@@ -1,21 +1,25 @@
 .tier-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-full);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
-  background: var(--color-bg-elevated);
+  background: var(--color-bg-elevated-2);
   font-size: var(--fs-xs);
   color: var(--color-text-muted);
-  max-width: 100%;
-  white-space: nowrap;
 }
 
-@media (max-width: 480px) {
-  .tier-badge {
-    white-space: normal;
-  }
+.tier-badge__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 .tier-badge--pending {
@@ -23,6 +27,7 @@
 }
 
 .tier-badge__dot {
+  flex-shrink: 0;
   width: 7px;
   height: 7px;
   border-radius: var(--radius-full);
@@ -32,8 +37,43 @@
 .tier-badge__tier {
   color: var(--color-text);
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.tier-badge__desc {
+  display: block;
+  line-height: var(--lh-snug, 1.35);
+  color: var(--color-text-faint);
+  /* Wrap inside the narrow rail instead of clipping mid-word. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .tier-badge--c .tier-badge__dot {
   background: var(--color-warm);
+}
+
+/* Compact horizontal strip when the rail is a top bar on small screens. */
+@media (max-width: 720px) {
+  .tier-badge {
+    width: auto;
+    max-width: min(16rem, 100%);
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-full);
+  }
+
+  .tier-badge__desc {
+    flex: 1 1 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .tier-badge__desc {
+    display: none;
+  }
 }

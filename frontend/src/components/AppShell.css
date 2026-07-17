@@ -7,9 +7,11 @@
 .app-shell__rail {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   padding: var(--space-6) var(--space-4);
   border-right: 1px solid var(--color-border);
   background: var(--color-bg-elevated);
+  overflow: hidden;
 }
 
 .app-shell__brand {
@@ -49,11 +51,25 @@
 
 .app-shell__footer {
   margin-top: auto;
+  min-width: 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
 }
 
 .app-shell__content {
   overflow-y: auto;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+}
+
+.app-shell__view {
+  height: 100%;
+}
+
+.app-shell__view[hidden] {
+  display: none !important;
 }
 
 @media (max-width: 720px) {

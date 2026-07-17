@@ -3,9 +3,9 @@ chat_history.db (folded into the same profile.db file as everything else,
 same convention as checkin/crisis_events/escalations). Content is Fernet-
 encrypted at rest, same pattern as long_term.py's Chroma documents.
 
-Backs the "replay a past reply" feature: main.py's
-GET /api/chat_history/{id}/audio re-synthesizes stored text on demand via
-the normal TTS engine — no audio files are cached anywhere."""
+Replay re-synthesizes stored text through the live TTS engine with the
+profile's preferred voice (no audio files on disk).
+"""
 from datetime import datetime, timezone
 
 from app.config import DATA_DIR
@@ -21,7 +21,14 @@ def record_turn(user_id: str, session_id: str, turn_id: int, role: str, content:
         cursor = conn.execute(
             """INSERT INTO chat_history (user_id, session_id, turn_id, role, content, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (user_id, session_id, turn_id, role, encrypt(content).decode("latin1"), datetime.now(timezone.utc).isoformat()),
+            (
+                user_id,
+                session_id,
+                turn_id,
+                role,
+                encrypt(content).decode("latin1"),
+                datetime.now(timezone.utc).isoformat(),
+            ),
         )
         conn.commit()
         return cursor.lastrowid
@@ -29,27 +36,55 @@ def record_turn(user_id: str, session_id: str, turn_id: int, role: str, content:
         conn.close()
 
 
-def list_turns(user_id: str, limit: int = 50) -> list[dict]:
+def list_turns(
+    user_id: str, limit: int = 40, before_id: int | None = None
+) -> dict:
+    """Newest page of encrypted chat rows for a profile.
+
+    Returns ``{"items": [...], "has_more": bool}``. ``before_id`` loads the
+    next older page (rows with id < before_id) for Talk-page scroll-up.
+    Each conversation turn is two rows (user + assistant), so a limit of
+    ~40 rows is roughly 20 visible exchanges.
+    """
+    limit = max(1, min(limit, 200))
     conn = get_connection(CHAT_HISTORY_DB_PATH)
     try:
-        rows = conn.execute(
-            """SELECT id, session_id, turn_id, role, content, created_at FROM chat_history
-               WHERE user_id = ? ORDER BY id DESC LIMIT ?""",
-            (user_id, limit),
-        ).fetchall()
+        if before_id is None:
+            rows = conn.execute(
+                """SELECT id, session_id, turn_id, role, content, created_at FROM chat_history
+                   WHERE user_id = ? ORDER BY id DESC LIMIT ?""",
+                (user_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT id, session_id, turn_id, role, content, created_at FROM chat_history
+                   WHERE user_id = ? AND id < ? ORDER BY id DESC LIMIT ?""",
+                (user_id, before_id, limit),
+            ).fetchall()
+        items = [
+            {
+                "id": r[0],
+                "session_id": r[1],
+                "turn_id": r[2],
+                "role": r[3],
+                "content": decrypt(r[4].encode("latin1")),
+                "created_at": r[5],
+            }
+            for r in rows
+        ]
+        has_more = False
+        if items:
+            oldest_id = min(item["id"] for item in items)
+            has_more = (
+                conn.execute(
+                    "SELECT 1 FROM chat_history WHERE user_id = ? AND id < ? LIMIT 1",
+                    (user_id, oldest_id),
+                ).fetchone()
+                is not None
+            )
+        return {"items": items, "has_more": has_more}
     finally:
         conn.close()
-    return [
-        {
-            "id": r[0],
-            "session_id": r[1],
-            "turn_id": r[2],
-            "role": r[3],
-            "content": decrypt(r[4].encode("latin1")),
-            "created_at": r[5],
-        }
-        for r in rows
-    ]
 
 
 def get_turn(user_id: str, row_id: int) -> dict | None:
@@ -76,7 +111,9 @@ def get_turn(user_id: str, row_id: int) -> dict | None:
 def delete_turn(user_id: str, row_id: int) -> None:
     conn = get_connection(CHAT_HISTORY_DB_PATH)
     try:
-        conn.execute("DELETE FROM chat_history WHERE id = ? AND user_id = ?", (row_id, user_id))
+        conn.execute(
+            "DELETE FROM chat_history WHERE id = ? AND user_id = ?", (row_id, user_id)
+        )
         conn.commit()
     finally:
         conn.close()

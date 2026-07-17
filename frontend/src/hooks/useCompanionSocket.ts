@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { backendFetch } from "../lib/backendFetch";
 
 export type SocketStatus = "connecting" | "reconnecting" | "open" | "closed" | "error";
 
@@ -7,6 +8,17 @@ export interface Turn {
   transcript: string;
   replyText: string;
   turnDbId: number;
+  /** Smallest chat_history row id in this paired turn — used for pagination. */
+  oldestRowId?: number;
+}
+
+interface ChatHistoryRow {
+  id: number;
+  session_id: string;
+  turn_id: number;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
 }
 
 interface TurnMeta {
@@ -23,24 +35,84 @@ interface UseCompanionSocketResult {
   isThinking: boolean;
   isSpeaking: boolean;
   speakingAmplitude: number;
+  hasMoreHistory: boolean;
+  loadingOlder: boolean;
+  loadOlderHistory: () => Promise<void>;
   sendUtterance: (audio: Float32Array) => void;
   sendText: (text: string) => void;
 }
 
-// Same spirit as lib/backendFetch retryWithBackoff — short first delays,
-// then settle at 5s so a mid-setup or brief backend restart recovers.
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 3000, 5000, 5000, 5000, 5000];
+/** ~20 conversation turns (user+assistant ≈ 2 rows each). */
+const HISTORY_PAGE_ROWS = 40;
 
-/** Owns the /ws round trip (send raw 16kHz PCM, receive JSON metadata then
- * PCM reply audio — protocol defined in backend/app/main.py) and reply
- * playback, so Chat.tsx just reacts to status. Reconnects with backoff on
- * close/error so a transient backend restart doesn't leave Chat dead. */
+/** Pair persisted chat_history rows into Talk-page Turn objects.
+ * API returns newest-first; result is oldest-first. */
+export function historyRowsToTurns(rows: ChatHistoryRow[]): Turn[] {
+  const map = new Map<
+    string,
+    {
+      transcript?: string;
+      replyText?: string;
+      turnDbId?: number;
+      oldestRowId: number;
+      order: number;
+    }
+  >();
+  for (const row of rows) {
+    const key = `${row.session_id}:${row.turn_id}`;
+    const slot = map.get(key) ?? { oldestRowId: row.id, order: row.id };
+    slot.order = Math.min(slot.order, row.id);
+    slot.oldestRowId = Math.min(slot.oldestRowId, row.id);
+    if (row.role === "user") {
+      slot.transcript = row.content;
+    } else {
+      slot.replyText = row.content;
+      slot.turnDbId = row.id;
+    }
+    map.set(key, slot);
+  }
+  return [...map.entries()]
+    .map(([key, s]) => ({
+      id: key,
+      transcript: s.transcript ?? "",
+      replyText: s.replyText ?? "",
+      turnDbId: s.turnDbId ?? 0,
+      oldestRowId: s.oldestRowId,
+      order: s.order,
+    }))
+    .filter((t) => t.transcript.length > 0 || t.replyText.length > 0)
+    .sort((a, b) => a.order - b.order)
+    .map(({ order: _order, ...turn }) => turn);
+}
+
+async function fetchHistoryPage(beforeId?: number): Promise<{
+  turns: Turn[];
+  hasMore: boolean;
+  oldestRowId: number | null;
+}> {
+  const params = new URLSearchParams({ limit: String(HISTORY_PAGE_ROWS) });
+  if (beforeId != null) params.set("before_id", String(beforeId));
+  const res = await backendFetch(`/api/chat_history?${params}`);
+  if (!res.ok) throw new Error(`status ${res.status}`);
+  const data = (await res.json()) as { items: ChatHistoryRow[]; has_more: boolean };
+  const items = data.items ?? [];
+  const turns = historyRowsToTurns(items);
+  const oldestRowId = items.length > 0 ? Math.min(...items.map((r) => r.id)) : null;
+  return { turns, hasMore: Boolean(data.has_more), oldestRowId };
+}
+
+/** Owns the /ws round trip and reply playback. History lives on the Talk
+ * page: initial page of ~20 turns, older pages on scroll-up. */
 export function useCompanionSocket(url: string): UseCompanionSocketResult {
   const [status, setStatus] = useState<SocketStatus>("connecting");
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [historyTurns, setHistoryTurns] = useState<Turn[]>([]);
+  const [liveTurns, setLiveTurns] = useState<Turn[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speakingAmplitude, setSpeakingAmplitude] = useState(0);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const pendingMetaRef = useRef<TurnMeta | null>(null);
@@ -48,12 +120,66 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
   const rafRef = useRef<number | null>(null);
   const attemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const oldestRowIdRef = useRef<number | null>(null);
+  const loadingOlderRef = useRef(false);
+
+  const turns = [...historyTurns, ...liveTurns];
 
   const addTurn = useCallback((meta: TurnMeta) => {
-    setTurns((prev) => [
+    setLiveTurns((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), transcript: meta.transcript, replyText: meta.reply_text, turnDbId: meta.turn_db_id },
+      {
+        id: crypto.randomUUID(),
+        transcript: meta.transcript,
+        replyText: meta.reply_text,
+        turnDbId: meta.turn_db_id,
+        oldestRowId: meta.turn_db_id,
+      },
     ]);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchHistoryPage()
+      .then(({ turns: page, hasMore, oldestRowId }) => {
+        if (cancelled) return;
+        oldestRowIdRef.current = oldestRowId;
+        setHasMoreHistory(hasMore);
+        setHistoryTurns(page);
+      })
+      .catch((err) => {
+        console.error("[useCompanionSocket] history hydrate failed", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loadOlderHistory = useCallback(async () => {
+    if (loadingOlderRef.current || oldestRowIdRef.current == null) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      const { turns: older, hasMore, oldestRowId } = await fetchHistoryPage(
+        oldestRowIdRef.current,
+      );
+      if (older.length === 0) {
+        setHasMoreHistory(false);
+        return;
+      }
+      oldestRowIdRef.current = oldestRowId;
+      setHasMoreHistory(hasMore);
+      setHistoryTurns((prev) => {
+        const seen = new Set(prev.map((t) => t.id));
+        const fresh = older.filter((t) => !seen.has(t.id));
+        return [...fresh, ...prev];
+      });
+    } catch (err) {
+      console.error("[useCompanionSocket] load older failed", err);
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
   }, []);
 
   const playReply = useCallback(
@@ -63,8 +189,6 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
 
       if (!playbackCtxRef.current) playbackCtxRef.current = new AudioContext();
       const ctx = playbackCtxRef.current;
-      // Autoplay policies often leave the context suspended until a user
-      // gesture — mic path resumes elsewhere; resume here before TTS play.
       if (ctx.state === "suspended") void ctx.resume();
 
       const buffer = ctx.createBuffer(1, audio.length, meta.sample_rate);
@@ -150,8 +274,6 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
 
       ws.onerror = () => {
         if (cancelled) return;
-        // close always follows error — clear thinking here too so a stuck
-        // "thinking" orb doesn't survive a failed handshake.
         setIsThinking(false);
         setStatus("error");
       };
@@ -166,9 +288,6 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
             return;
           }
           if (!meta.has_audio) {
-            // Typed input with speak_replies off (or any turn where the
-            // backend skipped TTS) — no binary frame follows, so resolve
-            // the turn immediately instead of waiting for one.
             setIsThinking(false);
             addTurn(meta);
             return;
@@ -216,5 +335,16 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
     wsRef.current.send(JSON.stringify({ type: "text", text }));
   }, []);
 
-  return { status, turns, isThinking, isSpeaking, speakingAmplitude, sendUtterance, sendText };
+  return {
+    status,
+    turns,
+    isThinking,
+    isSpeaking,
+    speakingAmplitude,
+    hasMoreHistory,
+    loadingOlder,
+    loadOlderHistory,
+    sendUtterance,
+    sendText,
+  };
 }

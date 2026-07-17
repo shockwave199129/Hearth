@@ -23,7 +23,7 @@ function socketStatusMessage(status: SocketStatus): string | null {
 
 export function Chat() {
   const { profile } = useProfile();
-  const { status, turns, isThinking, isSpeaking, speakingAmplitude, sendUtterance, sendText } =
+  const { status, turns, isThinking, isSpeaking, speakingAmplitude, hasMoreHistory, loadingOlder, loadOlderHistory, sendUtterance, sendText } =
     useCompanionSocket(useMemo(() => wsUrl(), []));
   const onUtterance = useCallback((audio: Float32Array) => sendUtterance(audio), [sendUtterance]);
   const { state: recorderState, amplitude, error, start, stop } = useAudioRecorder(onUtterance);
@@ -67,7 +67,13 @@ export function Chat() {
         )}
         {error && <p className="chat-page__error">{error}</p>}
       </div>
-      <TranscriptLog turns={turns} companionName={profile?.companion_name ?? "Companion"} />
+      <TranscriptLog
+        turns={turns}
+        companionName={profile?.companion_name ?? "Companion"}
+        hasMoreHistory={hasMoreHistory}
+        loadingOlder={loadingOlder}
+        onLoadOlder={loadOlderHistory}
+      />
       <form className="chat-page__text-form" onSubmit={handleTextSubmit}>
         <input
           type="text"

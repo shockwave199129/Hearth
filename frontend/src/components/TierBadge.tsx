@@ -22,8 +22,10 @@ export function TierBadge({ status, error }: TierBadgeProps) {
   }
   return (
     <div className={`tier-badge tier-badge--${status.tier.toLowerCase()}`}>
-      <span className="tier-badge__dot" aria-hidden />
-      <span className="tier-badge__tier">Tier {status.tier}</span>
+      <div className="tier-badge__row">
+        <span className="tier-badge__dot" aria-hidden />
+        <span className="tier-badge__tier">Tier {status.tier}</span>
+      </div>
       <span className="tier-badge__desc">{TIER_COPY[status.tier] ?? "Configured"}</span>
     </div>
   );

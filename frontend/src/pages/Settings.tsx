@@ -7,7 +7,6 @@ import { useSafetyStatus } from "../hooks/useSafetyStatus";
 import { MemoryPanel } from "../components/MemoryPanel";
 import { SkillsPanel } from "../components/SkillsPanel";
 import { ProfilesPanel } from "../components/ProfilesPanel";
-import { HistoryPanel } from "../components/HistoryPanel";
 import { getStoredTheme, setStoredTheme, type Theme } from "../lib/theme";
 import { friendlyActionError } from "../lib/errors";
 import { useAlert } from "../lib/alerts";
@@ -184,7 +183,7 @@ export function Settings() {
       <section className="settings__section">
         <h2>Profiles</h2>
         <p className="settings__hint">
-          Each profile has its own memory, check-ins, and history. Only one is active at a time.
+          Each profile has its own memory and check-ins. Only one is active at a time.
         </p>
         <ProfilesPanel />
       </section>
@@ -196,15 +195,6 @@ export function Settings() {
           ever hidden from you. Browse, correct, or remove anything below.
         </p>
         <MemoryPanel />
-      </section>
-
-      <section className="settings__section">
-        <h2>Conversation history</h2>
-        <p className="settings__hint">
-          Past turns are kept, encrypted, so you can replay a previous reply on demand — nothing is
-          cached as audio, it's re-spoken fresh each time. Delete anything you don't want kept.
-        </p>
-        <HistoryPanel />
       </section>
 
       <section className="settings__section">

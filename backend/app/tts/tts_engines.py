@@ -73,6 +73,8 @@ class ParlerEngine(TtsEngine):
         self.sample_rate = self._model.config.sampling_rate
 
     def synthesize(self, text: str, voice: str) -> np.ndarray:
+        import hashlib
+
         import torch
 
         description = self._VOICE_DESCRIPTIONS.get(
@@ -84,9 +86,17 @@ class ParlerEngine(TtsEngine):
         prompt_input_ids = self._tokenizer(text, return_tensors="pt").input_ids.to(
             self._device
         )
+        # Stable seed from voice+text (sha256, not Python hash()) so live
+        # chat and days-later replay use the same Parler sampling path —
+        # same preferred_voice description + same seed ⇒ consistent speaker.
+        seed = int(hashlib.sha256(f"{voice}\0{text}".encode()).hexdigest()[:8], 16)
+        generator = torch.Generator(device=self._device).manual_seed(seed)
         with torch.no_grad():
             generation = self._model.generate(
-                input_ids=input_ids, prompt_input_ids=prompt_input_ids
+                input_ids=input_ids,
+                prompt_input_ids=prompt_input_ids,
+                do_sample=True,
+                generator=generator,
             )
         return generation.cpu().numpy().squeeze()
 
