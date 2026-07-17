@@ -24,13 +24,15 @@ import sys
 
 from PyInstaller.building.build_main import Analysis, PYZ, EXE, COLLECT
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 block_cipher = None
 
 # Stdlib names that are never useful in a headless server freeze (GUI /
-# demos / the test suite). Everything else from sys.stdlib_module_names is
-# force-included below — see the hiddenimports note.
+# demos / the test suite). Everything else from sys.stdlib_module_names —
+# plus package submodules (xml.dom, encodings.*, …) — is force-included
+# below. sys.stdlib_module_names alone is only top-level names, which is
+# why v0.2.9 still missed xml.dom after bundling "xml".
 _STDLIB_EXCLUDE = {
     "antigravity",
     "this",
@@ -44,7 +46,19 @@ _STDLIB_EXCLUDE = {
     "ensurepip",
     "venv",
     "pydoc_data",
+    "curses",
 }
+
+
+def _stdlib_hiddenimports() -> list[str]:
+    names: set[str] = set()
+    for top in sorted(sys.stdlib_module_names - _STDLIB_EXCLUDE):
+        names.update(collect_submodules(top))
+    # Drop anything under an excluded top-level (collect_submodules can
+    # still surface odd edges on some platforms).
+    return sorted(
+        n for n in names if n.split(".", 1)[0] not in _STDLIB_EXCLUDE
+    )
 
 # NOTE: `__file__` is not defined in a PyInstaller spec's exec namespace —
 # use the `SPECPATH` global PyInstaller injects instead (caught by actually
@@ -92,11 +106,11 @@ hiddenimports = [
     "moonshine_voice",
     "moonshine_voice.transcriber",
     # Post-setup packages land in backend-deps (transformers, ipython via
-    # audiotools, …) and import stdlib modules the thin Analysis graph never
-    # sees — field failures: timeit, pickletools, filecmp. Including nearly
-    # all of sys.stdlib_module_names stops the whack-a-mole; missing names
-    # on a given OS just warn at freeze time ("Hidden import not found").
-    *sorted(sys.stdlib_module_names - _STDLIB_EXCLUDE),
+    # audiotools, …) and import stdlib the thin Analysis graph never sees
+    # (timeit, pickletools, filecmp, xml.dom, …). Top-level names alone are
+    # not enough — collect_submodules pulls xml.dom, encodings.*, etc.
+    # Missing names on a given OS just warn at freeze time.
+    *_stdlib_hiddenimports(),
 ]
 
 # Packages with native extensions / plugin-style dynamic imports that
