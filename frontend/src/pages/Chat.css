@@ -18,6 +18,14 @@
   min-height: 0;
 }
 
+.chat-page__status {
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+  max-width: 26rem;
+  text-align: center;
+  margin: 0;
+}
+
 .chat-page__error {
   color: var(--color-danger);
   font-size: var(--fs-sm);

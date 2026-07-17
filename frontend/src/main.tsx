@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { AlertProvider } from "./lib/alerts";
 import { AlertStack } from "./components/AlertStack";
+import { ProfileProvider } from "./lib/ProfileContext";
 import { applyTheme, getStoredTheme } from "./lib/theme";
 import "./styles/global.css";
 
@@ -18,7 +19,9 @@ createRoot(document.getElementById("root")!).render(
         the route change — see lib/alerts.tsx. */}
     <AlertProvider>
       <BrowserRouter>
-        <App />
+        <ProfileProvider>
+          <App />
+        </ProfileProvider>
       </BrowserRouter>
       <AlertStack />
     </AlertProvider>

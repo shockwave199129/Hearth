@@ -84,7 +84,10 @@ export function ProfilesPanel() {
           );
         })}
       </ul>
-      <Link to="/onboarding" className="profiles-panel__button profiles-panel__button--primary profiles-panel__add">
+      <Link
+        to="/onboarding?mode=add"
+        className="profiles-panel__button profiles-panel__button--primary profiles-panel__add"
+      >
         Add another profile
       </Link>
     </div>

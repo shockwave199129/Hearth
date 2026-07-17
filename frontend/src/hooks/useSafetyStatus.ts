@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { backendFetch } from "../lib/backendFetch";
 import { friendlyFetchError } from "../lib/errors";
 
 export interface SafetyStatus {
@@ -23,7 +24,7 @@ export function useSafetyStatus(): UseSafetyStatusResult {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/safety/status")
+    backendFetch("/api/safety/status")
       .then((res) => {
         if (!res.ok) throw new Error(`status ${res.status}`);
         return res.json() as Promise<SafetyStatus>;

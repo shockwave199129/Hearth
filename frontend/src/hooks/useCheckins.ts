@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { backendFetch } from "../lib/backendFetch";
 import { friendlyFetchError } from "../lib/errors";
 
 export interface CheckinStatus {
@@ -22,7 +23,7 @@ export function useCheckins(): UseCheckinsResult {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/checkin")
+    backendFetch("/api/checkin")
       .then((res) => {
         if (!res.ok) throw new Error(`status ${res.status}`);
         return res.json() as Promise<CheckinStatus>;

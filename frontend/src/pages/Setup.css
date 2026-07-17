@@ -73,6 +73,22 @@
   margin: 0;
 }
 
+.setup__log {
+  margin: 0;
+  max-height: 12rem;
+  overflow: auto;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .setup__button {
   border: none;
   border-radius: var(--radius-full);

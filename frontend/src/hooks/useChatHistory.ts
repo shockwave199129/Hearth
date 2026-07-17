@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { backendFetch } from "../lib/backendFetch";
 import { friendlyFetchError } from "../lib/errors";
 
 export interface ChatHistoryTurn {
@@ -33,7 +34,7 @@ export function useChatHistory(): UseChatHistoryResult {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch("/api/chat_history")
+    backendFetch("/api/chat_history")
       .then((res) => {
         if (!res.ok) throw new Error(`status ${res.status}`);
         return res.json() as Promise<ChatHistoryTurn[]>;
@@ -48,7 +49,7 @@ export function useChatHistory(): UseChatHistoryResult {
 
   const deleteTurn = useCallback(
     async (id: number) => {
-      const res = await fetch(`/api/chat_history/${id}`, { method: "DELETE" });
+      const res = await backendFetch(`/api/chat_history/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`status ${res.status}`);
       refresh();
     },
@@ -56,7 +57,7 @@ export function useChatHistory(): UseChatHistoryResult {
   );
 
   const playTurn = useCallback(async (id: number) => {
-    const res = await fetch(`/api/chat_history/${id}/audio`);
+    const res = await backendFetch(`/api/chat_history/${id}/audio`);
     if (!res.ok) throw new Error(`status ${res.status}`);
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);

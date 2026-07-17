@@ -92,12 +92,23 @@ def delete_escalations(user_id: str) -> None:
 def maybe_escalate(user_id: str, reason: str, notifier: Notifier | None = None) -> None:
     """No-op unless the user explicitly consented AND gave a contact value
     AND a repeated/escalating pattern has actually occurred — see module
-    docstring for why both are required."""
+    docstring for why both are required.
+
+    Also no-ops if an escalation was already recorded within
+    ESCALATION_WINDOW_DAYS — keeps the stub (and a future real provider)
+    from re-firing on every subsequent crisis hit in the same window.
+    """
     profile = get_profile(user_id)
     if profile is None or not profile.emergency_contact_consent or not profile.emergency_contact_value:
         return
     if event_count(user_id, ESCALATION_WINDOW_DAYS) < ESCALATION_TRIGGER_COUNT:
         return
+
+    last = last_escalation(user_id)
+    if last is not None:
+        age = datetime.now(timezone.utc) - last
+        if age.total_seconds() < ESCALATION_WINDOW_DAYS * 86400:
+            return
 
     notifier = notifier or LoggedNotifier()
     message = ESCALATION_MESSAGE_TEMPLATE.format(

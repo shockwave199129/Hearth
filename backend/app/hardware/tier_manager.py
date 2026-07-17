@@ -24,9 +24,13 @@ _TIER_TABLE = {
 
 
 def pick_tier(hw: dict) -> TierConfig:
-    if hw["vram_gb"] >= 8:
+    """S/A (parler + GPU layers) only when NVIDIA is present. AMD/no-GPU
+    machines fall through to B/C (kokoro) by RAM — otherwise Windows AMD
+    with high VRAM would get parler_gpu while setup installs CPU torch."""
+    has_nvidia = bool(hw.get("has_nvidia"))
+    if has_nvidia and hw["vram_gb"] >= 8:
         key = "S"
-    elif hw["vram_gb"] >= 4 or hw["ram_gb"] >= 16:
+    elif has_nvidia and (hw["vram_gb"] >= 4 or hw["ram_gb"] >= 16):
         key = "A"
     elif hw["ram_gb"] >= 8:
         key = "B"

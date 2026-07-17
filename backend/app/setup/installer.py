@@ -10,13 +10,20 @@ while a genuinely separate interpreter with real pip sidesteps that
 entirely. See fetch_setup_python.py for where it comes from.
 """
 import platform
+import shutil
 import subprocess
 import sys
 import tarfile
 import threading
 from pathlib import Path
 
-from app.config import BACKEND_DEPS_DIR, BACKEND_DIR, extend_backend_deps_path
+from app.config import BACKEND_DEPS_DIR, BACKEND_DIR, SETUP_PYTHON_EXTRACT_DIR, extend_backend_deps_path
+
+
+def _windows_no_window_kwargs() -> dict:
+    if platform.system() != "Windows":
+        return {}
+    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
 
 
 def _setup_python_archive_dir() -> Path:
@@ -39,26 +46,11 @@ def _setup_python_archive_dir() -> Path:
     return BACKEND_DIR.parent / "desktop" / "src-tauri" / "resources" / "setup-python"
 
 
-SETUP_PYTHON_EXTRACT_DIR = BACKEND_DIR / "setup-python"
-
-
 class SetupError(RuntimeError):
     pass
 
 
-def _setup_python_bin() -> Path:
-    """Extracts the bundled python-build-standalone archive on first use
-    (idempotent — skips if already extracted), returns the path to its
-    python executable."""
-    if not SETUP_PYTHON_EXTRACT_DIR.exists():
-        archive_dir = _setup_python_archive_dir()
-        archives = list(archive_dir.glob("*.tar.gz"))
-        if not archives:
-            raise SetupError(f"no bundled setup-python archive found in {archive_dir}")
-        SETUP_PYTHON_EXTRACT_DIR.mkdir(parents=True, exist_ok=True)
-        with tarfile.open(archives[0]) as tf:
-            tf.extractall(SETUP_PYTHON_EXTRACT_DIR)  # noqa: S202 — our own bundled, trusted archive
-
+def _expected_setup_python_binary() -> Path:
     # Exact known paths, not a glob — python-build-standalone's
     # `install_only` archives also contain a *second*, smaller stub copy
     # under Lib/venv/scripts/nt/python.exe (Windows) purely for venv
@@ -66,9 +58,36 @@ def _setup_python_bin() -> Path:
     # guaranteed enumeration order, risking silently invoking the wrong
     # one. Confirmed both real paths below by inspecting each platform's
     # actual archive contents (`tar -tzf`), not assumed from docs alone.
-    binary = SETUP_PYTHON_EXTRACT_DIR / "python" / (
+    return SETUP_PYTHON_EXTRACT_DIR / "python" / (
         "python.exe" if platform.system() == "Windows" else "bin/python3"
     )
+
+
+def _extract_setup_python() -> None:
+    archive_dir = _setup_python_archive_dir()
+    archives = list(archive_dir.glob("*.tar.gz"))
+    if not archives:
+        raise SetupError(f"no bundled setup-python archive found in {archive_dir}")
+    SETUP_PYTHON_EXTRACT_DIR.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(archives[0]) as tf:
+        tf.extractall(SETUP_PYTHON_EXTRACT_DIR)  # noqa: S202 — our own bundled, trusted archive
+
+
+def _setup_python_bin() -> Path:
+    """Extracts the bundled python-build-standalone archive on first use
+    (idempotent — skips if already extracted), returns the path to its
+    python executable. If a prior extract was interrupted (dir exists but
+    binary missing), wipes and re-extracts."""
+    binary = _expected_setup_python_binary()
+    if binary.exists():
+        return binary
+
+    if SETUP_PYTHON_EXTRACT_DIR.exists():
+        # Partial extract from a crashed previous attempt — not recoverable
+        # by skipping extract, so start clean.
+        shutil.rmtree(SETUP_PYTHON_EXTRACT_DIR)
+
+    _extract_setup_python()
     if not binary.exists():
         raise SetupError(f"extracted {SETUP_PYTHON_EXTRACT_DIR} but expected binary {binary} is missing")
     return binary
@@ -76,13 +95,22 @@ def _setup_python_bin() -> Path:
 
 class InstallProgress:
     """Shared, thread-safe progress state /api/setup/* polls. One instance
-    per process — a fresh setup attempt resets it."""
+    per process — a fresh setup attempt resets it via reset()."""
 
     def __init__(self):
         self._lock = threading.Lock()
-        self.step = "idle"  # idle | detecting | installing_packages | downloading_models | done | error
+        # idle | detecting | installing_packages | downloading_models |
+        # starting_engines | done | error
+        self.step = "idle"
         self.log_tail: list[str] = []
         self.error: str | None = None
+
+    def reset(self) -> None:
+        """Clears prior step/error/log so a Retry doesn't leave stale UI state."""
+        with self._lock:
+            self.step = "idle"
+            self.log_tail = []
+            self.error = None
 
     def set_step(self, step: str) -> None:
         with self._lock:
@@ -118,7 +146,13 @@ def install_packages(packages: list[str], index_url: str | None, progress: Insta
     cmd += packages
 
     progress.append_log(f"running: {' '.join(cmd)}")
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        **_windows_no_window_kwargs(),
+    )
     for line in proc.stdout:  # type: ignore[union-attr]
         progress.append_log(line.rstrip())
     returncode = proc.wait()

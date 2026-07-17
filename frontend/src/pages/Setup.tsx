@@ -6,6 +6,7 @@ const STEP_LABELS: Record<string, string> = {
   detecting: "Detecting your hardware…",
   installing_packages: "Installing the right components for your machine…",
   downloading_models: "Downloading models…",
+  starting_engines: "Starting speech and language engines…",
   done: "All set.",
   error: "Setup hit a problem.",
 };
@@ -16,6 +17,7 @@ interface SetupProps {
   progress: SetupProgress | null;
   starting: boolean;
   onStart: () => void;
+  onRetryStatus?: () => void;
 }
 
 function gpuSummary(status: SetupStatus): string {
@@ -25,9 +27,11 @@ function gpuSummary(status: SetupStatus): string {
   return `${status.hardware.gpu_name} (${status.hardware.vram_gb} GB VRAM)`;
 }
 
-export function Setup({ status, statusError, progress, starting, onStart }: SetupProps) {
+export function Setup({ status, statusError, progress, starting, onStart, onRetryStatus }: SetupProps) {
   const step = progress?.step ?? "idle";
   const isRunning = step !== "idle" && step !== "done" && step !== "error";
+  const logTail = progress?.log_tail ?? [];
+  const needsConnectionRetry = Boolean(statusError && !status && onRetryStatus);
 
   return (
     <div className="setup">
@@ -63,17 +67,28 @@ export function Setup({ status, statusError, progress, starting, onStart }: Setu
               {STEP_LABELS[step] ?? step}
             </p>
             {progress?.error && <p className="setup__error">{progress.error}</p>}
+            {logTail.length > 0 && (
+              <pre className="setup__log" aria-label="Setup log">
+                {logTail.join("\n")}
+              </pre>
+            )}
           </div>
         )}
 
-        <button
-          type="button"
-          className="setup__button"
-          onClick={onStart}
-          disabled={starting || isRunning || !status}
-        >
-          {step === "error" ? "Retry setup" : isRunning ? "Setting up…" : "Start setup"}
-        </button>
+        {needsConnectionRetry ? (
+          <button type="button" className="setup__button" onClick={onRetryStatus}>
+            Retry connection
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="setup__button"
+            onClick={onStart}
+            disabled={starting || isRunning || !status}
+          >
+            {step === "error" ? "Retry setup" : isRunning ? "Setting up…" : "Start setup"}
+          </button>
+        )}
       </div>
     </div>
   );

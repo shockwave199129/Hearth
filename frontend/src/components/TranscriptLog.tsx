@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./TranscriptLog.css";
 import type { Turn } from "../hooks/useCompanionSocket";
+import { backendFetch } from "../lib/backendFetch";
 
 interface TranscriptLogProps {
   turns: Turn[];
@@ -18,7 +19,7 @@ export function TranscriptLog({ turns, companionName }: TranscriptLogProps) {
   const replay = async (turnDbId: number) => {
     setPlayingId(turnDbId);
     try {
-      const res = await fetch(`/api/chat_history/${turnDbId}/audio`);
+      const res = await backendFetch(`/api/chat_history/${turnDbId}/audio`);
       if (!res.ok) return;
       const url = URL.createObjectURL(await res.blob());
       const audio = new Audio(url);

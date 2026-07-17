@@ -48,10 +48,14 @@ def detect_gpu() -> dict | None:
 
 def detect_hardware() -> dict:
     ram_gb = psutil.virtual_memory().total / (1024**3)
-    gpu = detect_gpu()
+    nvidia = _detect_nvidia_gpu()
+    gpu = nvidia or _detect_rocm_gpu()
     return {
         "ram_gb": round(ram_gb, 1),
         "cpu_count": psutil.cpu_count(logical=True) or 1,
         "gpu_name": gpu["name"] if gpu else None,
         "vram_gb": gpu["vram_gb"] if gpu else 0,
+        # Parler/CUDA tiers (S/A) need NVIDIA — AMD VRAM alone is not enough
+        # (Windows AMD gets CPU torch + DirectML onnxruntime / kokoro).
+        "has_nvidia": nvidia is not None,
     }

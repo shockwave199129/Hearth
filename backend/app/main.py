@@ -32,7 +32,6 @@ from app.config import (
     APP_PORT,
     CHECKIN_PROMPT_TEMPLATE,
     MEMORY_SYSTEM_PROMPT_ADDITION,
-    SAFETY_AUDIO_PATH,
     SAFETY_RESPONSE_TEXT,
     SKILLS_SYSTEM_PROMPT_ADDITION,
     SYSTEM_PROMPT_TEMPLATE,
@@ -74,15 +73,23 @@ def _to_lc_message(message: dict):
     return _ROLE_TO_LC_MESSAGE[message["role"]](content=message["content"])
 
 
-def _load_safety_audio() -> tuple[np.ndarray, int]:
-    """Loads the pre-synthesized crisis response (see config.SAFETY_AUDIO_PATH)
-    via stdlib `wave` rather than adding a new audio dependency — this is
-    read once per trigger, not a hot path. See app/safety/safety_audio/README.md."""
-    with wave.open(str(SAFETY_AUDIO_PATH), "rb") as wav_file:
-        sample_rate = wav_file.getframerate()
-        raw = wav_file.readframes(wav_file.getnframes())
-        audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-    return audio, sample_rate
+def _profile_context_addition(profile: UserProfile) -> str:
+    """Short spoken-context block from onboarding fields so the agent actually
+    uses age/profession/stressors/gender — previously only name + companion
+    name were injected into the system prompt."""
+    parts: list[str] = []
+    if profile.age_range:
+        parts.append(f"They are in the {profile.age_range} age range.")
+    if profile.gender:
+        parts.append(f"They identify as {profile.gender}.")
+    if profile.profession:
+        parts.append(f"Their work or role is {profile.profession}.")
+    if profile.stressors:
+        joined = ", ".join(profile.stressors)
+        parts.append(f"Things that have been weighing on them include: {joined}.")
+    if not parts:
+        return ""
+    return "\n\nWhat you already know about them from setup:\n" + " ".join(parts)
 
 
 def _pcm_to_wav_bytes(audio: np.ndarray, sample_rate: int) -> bytes:
@@ -100,12 +107,20 @@ def _pcm_to_wav_bytes(audio: np.ndarray, sample_rate: int) -> bytes:
 
 app = FastAPI(title="Hearth")
 
-# Dev-only: the Vite dev server (localhost:48176) calls /api/* directly.
-# In production the frontend build is served from this same origin, so this
-# has no effect once the app is packaged.
+# The UI is never served from this process in the packaged app — Tauri loads
+# frontend/dist from its own origin (https://tauri.localhost / tauri://localhost)
+# and the frontend calls http://127.0.0.1:48173 (see frontend/src/lib/backendUrl.ts).
+# Dev uses the Vite proxy on :48176. Backend is loopback-only (APP_HOST), so
+# opening these origins is the right CORS surface, not "same origin".
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:48176", "http://127.0.0.1:48176"],
+    allow_origins=[
+        "http://localhost:48176",
+        "http://127.0.0.1:48176",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost",
+    ],
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
@@ -157,6 +172,7 @@ class Pipeline:
         self.profile = profile
         self.system_prompt = (
             SYSTEM_PROMPT_TEMPLATE.format(companion_name=profile.companion_name, name=profile.name)
+            + _profile_context_addition(profile)
             + MEMORY_SYSTEM_PROMPT_ADDITION
             + SKILLS_SYSTEM_PROMPT_ADDITION
         )
@@ -219,11 +235,11 @@ class Pipeline:
 
     def _respond_to_crisis(
         self, transcript: str, crisis_match: crisis_detector.CrisisMatch, memory: ShortTermMemory
-    ) -> tuple[str, str, np.ndarray, int, int]:
-        """On a crisis-detector match: skip the LLM and live TTS entirely in
-        favor of a pre-synthesized response, per project-plan.md §9. This
-        keeps the safety path independent of the model's judgment (and its
-        latency) at the moment it matters most."""
+    ) -> tuple[str, str, np.ndarray | None, int, int]:
+        """On a crisis-detector match: skip the LLM in favor of the fixed
+        SAFETY_RESPONSE_TEXT (project-plan.md §9). Speak it via the live TTS
+        engine so the words match the text; if TTS fails, still return the
+        text (audio None) rather than crashing on a missing placeholder wav."""
         crisis_detector.record_event(crisis_match, self.profile.user_id)
         try:
             escalation.maybe_escalate(self.profile.user_id, reason=crisis_match.severity)
@@ -234,8 +250,12 @@ class Pipeline:
         turn_db_id = chat_history.record_turn(
             self.profile.user_id, memory.session_id, turn_id, "assistant", SAFETY_RESPONSE_TEXT
         )
-        reply_audio, sample_rate = _load_safety_audio()
-        return transcript, SAFETY_RESPONSE_TEXT, reply_audio, sample_rate, turn_db_id
+        try:
+            reply_audio = self.tts.synthesize(SAFETY_RESPONSE_TEXT, voice=self.profile.preferred_voice)
+            return transcript, SAFETY_RESPONSE_TEXT, reply_audio, self.tts.sample_rate, turn_db_id
+        except Exception:
+            logger.exception("crisis TTS failed — returning safety text without audio")
+            return transcript, SAFETY_RESPONSE_TEXT, None, 0, turn_db_id
 
     def _checkin_prompt_line(self) -> str:
         """Computed fresh each turn (single cheap row read) rather than
@@ -339,7 +359,22 @@ def _require_pipeline() -> None:
 def _startup() -> None:
     global _pipeline
     if orchestrator.detect_status()["complete"]:
-        _pipeline = Pipeline()
+        try:
+            _pipeline = Pipeline()
+        except Exception:
+            # Flag/assets said "done" but the app still can't start (e.g.
+            # backend-deps wiped). Clear the flag so the Setup UI can recover
+            # instead of leaving FastAPI dead on boot.
+            logger.exception(
+                "Pipeline() failed on startup despite setup marked complete — clearing setup_state"
+            )
+            from app.setup.state import clear_setup_complete
+
+            clear_setup_complete()
+            return
+        # Backfill the DB flag for installs that already had packages/models
+        # (e.g. scripts/setup.py) before setup_state existed.
+        orchestrator.mark_complete()
     else:
         logger.info("Setup not complete yet — waiting for /api/setup/start before building the pipeline.")
 
@@ -376,11 +411,21 @@ def start_setup() -> dict:
     if _setup_thread is not None and _setup_thread.is_alive():
         return _setup_progress.snapshot()
 
+    # Drop stale error/log from a previous failed attempt before the new run
+    # starts — otherwise GET /api/setup/progress (and the Setup UI) keep
+    # showing the old failure while detecting/installing again.
+    _setup_progress.reset()
+
     def _run() -> None:
         global _pipeline
         orchestrator.run_setup(_setup_progress)
-        if _setup_progress.snapshot()["step"] != "done":
+        # run_setup leaves step at downloading_models on success (never
+        # "done") — "done" is reserved for after Pipeline() + mark_complete.
+        if _setup_progress.snapshot()["step"] == "error":
             return
+
+        _setup_progress.set_step("starting_engines")
+        _setup_progress.append_log("Starting speech and language engines…")
         try:
             _pipeline = Pipeline()
         except Exception as exc:
@@ -389,8 +434,15 @@ def start_setup() -> dict:
             # caught for real during this feature's own local verification,
             # not a hypothetical: without this, the UI would show "done"
             # forever while /api/status silently 503s with no explanation.
-            logger.exception("Pipeline() construction failed after setup completed")
+            logger.exception("Pipeline() construction failed after setup packages/models")
             _setup_progress.set_error(f"setup finished but the app failed to start: {exc}")
+            return
+        # Persist so the next launch skips Setup entirely (setup_state in
+        # profile.db) — only after Pipeline actually starts, not merely
+        # after pip/downloads finish. mark_complete before "done" so a
+        # client that re-fetches /api/setup/status on done sees complete.
+        orchestrator.mark_complete()
+        _setup_progress.set_step("done")
 
     _setup_thread = threading.Thread(target=_run, daemon=True)
     _setup_thread.start()
@@ -439,11 +491,15 @@ def api_update_profile(payload: ProfileSettingsUpdate) -> UserProfile:
 def api_complete_onboarding(payload: OnboardingRequest) -> UserProfile:
     """Creates a new profile and activates it — used for first-run
     onboarding AND for adding another profile later (Settings → Profiles →
-    Add another profile reuses this same form/endpoint)."""
+    Add another profile reuses this same form/endpoint).
+
+    Profile + active_user_id are persisted first so a later launch still
+    skips onboarding even if wiring the live Pipeline fails mid-request.
+    """
     profile = create_profile(payload)
     set_active_user_id(profile.user_id)
-    _require_pipeline()
-    _pipeline.set_profile(profile)
+    if _pipeline is not None:
+        _pipeline.set_profile(profile)
     return profile
 
 
@@ -659,7 +715,8 @@ def run_cli_loop() -> None:
             transcript, reply_text, reply_audio, sample_rate, _turn_db_id = pipeline.respond(audio, memory)
             print(f"You: {transcript}")
             print(f"{pipeline.profile.companion_name}: {reply_text}")
-            play_audio(reply_audio, sample_rate)
+            if reply_audio is not None:
+                play_audio(reply_audio, sample_rate)
     except KeyboardInterrupt:
         pass
     finally:

@@ -2,17 +2,19 @@
 // manages the backend as a child process. See desktop/src-tauri/README.md
 // for the full picture.
 //
-// Dev builds spawn `python3 -m app.main` directly (fast iteration, assumes
-// a dev Python env — unchanged from before). Release builds instead spawn
-// the PyInstaller-frozen backend and a bundled llama-server, both shipped
-// as Tauri bundle resources (see tauri.conf.json's bundle.resources and
-// backend/hearth-backend.spec) — an installed app needs neither
-// Python nor a separately-installed llama-server on the target machine.
+// Dev builds spawn `python`/`python3 -m app.main` directly (fast iteration,
+// assumes a dev Python env). Release builds instead spawn the
+// PyInstaller-frozen backend and a bundled llama-server, both shipped as
+// Tauri bundle resources (see tauri.conf.json's bundle.resources and
+// backend/hearth-backend.spec) — an installed app needs neither Python nor
+// a separately-installed llama-server on the target machine.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -54,12 +56,34 @@ fn exe_name(base: &str) -> String {
     }
 }
 
+fn apply_spawn_flags(cmd: &mut Command) {
+    // Same process-group / no-console flags for dev and release so
+    // kill_process_tree can reach grandchildren on Unix, and so Windows
+    // doesn't flash a console for `python -m app.main` in tauri:dev.
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    #[cfg(unix)]
+    cmd.process_group(0);
+}
+
 fn spawn_backend_dev() -> std::io::Result<Child> {
     let dir = dev_backend_dir();
-    Command::new("python3")
-        .args(["-m", "app.main"])
-        .current_dir(&dir)
-        .spawn()
+    // Windows typically exposes `python`; many Unix setups only have
+    // `python3`. Try both so `tauri:dev` works on either.
+    let mut last_err: Option<std::io::Error> = None;
+    for python in ["python", "python3"] {
+        let mut cmd = Command::new(python);
+        cmd.args(["-m", "app.main"]).current_dir(&dir);
+        apply_spawn_flags(&mut cmd);
+        match cmd.spawn() {
+            Ok(child) => return Ok(child),
+            Err(err) => last_err = Some(err),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "python/python3 not found")
+    }))
 }
 
 /// Release builds: spawn the frozen backend from its bundled resource
@@ -94,8 +118,7 @@ fn spawn_backend_release(app: &tauri::AppHandle) -> std::io::Result<Child> {
         cmd.env("LD_LIBRARY_PATH", &llama_dir);
     }
 
-    #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
+    apply_spawn_flags(&mut cmd);
 
     // New process group (pgid == the backend's own pid) so kill_process_tree
     // can signal the whole tree at once — hearth-backend.exe in turn spawns
@@ -104,9 +127,6 @@ fn spawn_backend_release(app: &tauri::AppHandle) -> std::io::Result<Child> {
     // embedder.py), both inherited into this same group since neither calls
     // setpgid itself. Without this, killing only the top-level Child left
     // both of those orphaned and still running after the app window closed.
-    #[cfg(unix)]
-    cmd.process_group(0);
-
     cmd.spawn()
 }
 
@@ -141,6 +161,29 @@ fn kill_process_tree(child: &mut Child) {
     let _ = child.wait();
 }
 
+/// Notify the webview that the backend child failed to start. setup() often
+/// runs before the window exists, so retry briefly until `main` is ready.
+/// Frontend listens for `backend-spawn-failed` (see useSetupStatus).
+fn notify_backend_spawn_failed(app: &tauri::AppHandle, message: &str) {
+    let handle = app.clone();
+    let payload = serde_json::to_string(message).unwrap_or_else(|_| {
+        "\"Couldn't start the companion backend.\"".to_string()
+    });
+    thread::spawn(move || {
+        for _ in 0..50 {
+            if let Some(window) = handle.get_webview_window("main") {
+                let js = format!(
+                    "window.dispatchEvent(new CustomEvent('backend-spawn-failed', {{ detail: {payload} }}));"
+                );
+                let _ = window.eval(&js);
+                return;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        eprintln!("backend-spawn-failed: webview never became ready to receive the error");
+    });
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(BackendProcess(Mutex::new(None)))
@@ -156,7 +199,9 @@ fn main() {
                     *state.0.lock().unwrap() = Some(child);
                 }
                 Err(err) => {
-                    eprintln!("failed to start backend: {err}");
+                    let msg = format!("Couldn't start the companion backend: {err}");
+                    eprintln!("{msg}");
+                    notify_backend_spawn_failed(app.handle(), &msg);
                 }
             }
             Ok(())

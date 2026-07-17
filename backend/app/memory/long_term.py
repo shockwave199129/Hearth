@@ -64,7 +64,12 @@ def delete_all_for_user(user_id: str) -> None:
 def list_memories(user_id: str, category: str | None = None) -> list[dict]:
     """id + category + a short label only — never the full text, so a
     listing call can't accidentally dump everything into context."""
-    where = {"user_id": user_id, "category": category} if category else {"user_id": user_id}
+    # chromadb 1.5+ requires a single top-level operator — a bare multi-key
+    # dict raises "Expected where to have exactly one operator".
+    if category:
+        where = {"$and": [{"user_id": user_id}, {"category": category}]}
+    else:
+        where = {"user_id": user_id}
     results = get_collection().get(where=where)
     return [
         {"id": i, "category": m["category"], "label": decrypt(d.encode("latin1"))[:40]}

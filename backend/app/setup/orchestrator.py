@@ -9,6 +9,8 @@ from app.hardware.detect import detect_hardware
 from app.hardware.tier_manager import TierConfig, pick_tier, resolve_paths
 from app.setup import hardware_variant, models
 from app.setup.installer import InstallProgress, SetupError, install_packages
+from app.setup.state import clear_setup_complete, is_setup_complete
+from app.setup.state import mark_setup_complete as mark_complete
 
 # Bundled via hearth-backend.spec's datas (dest ".") specifically so this
 # resolves correctly in both dev and frozen modes without its own
@@ -52,16 +54,35 @@ def _models_present(tier: TierConfig) -> bool:
 
 def detect_status() -> dict:
     """Used by GET /api/setup/status — reports hardware, the tier it maps
-    to, and whether setup (packages + models) is already done."""
+    to, and whether setup (packages + models) is already done.
+
+    Completion is persisted in profile.db (`setup_state`) after the first
+    successful run so later launches skip the Setup UI. The flag alone is
+    not enough if model files are gone — that clears the flag and shows
+    Setup again. Before the flag exists, we still fall back to the live
+    packages+models check (dev installs that used scripts/setup.py)."""
     hw = detect_hardware()
     tier = pick_tier(hw)
     variant = hardware_variant.detect()
+    models_ok = _models_present(tier)
+    flagged = is_setup_complete()
+
+    if flagged:
+        if not models_ok:
+            clear_setup_complete()
+            complete = False
+        else:
+            # Trust the DB flag — don't re-probe TTS imports on every boot.
+            complete = True
+    else:
+        complete = _packages_engine_importable(tier) and models_ok
+
     return {
         "hardware": hw,
         "tier": tier.tier,
         "tts_engine": tier.tts_engine,
         "gpu_vendor": variant.vendor,
-        "complete": _packages_engine_importable(tier) and _models_present(tier),
+        "complete": complete,
     }
 
 
@@ -90,7 +111,16 @@ def run_setup(progress: InstallProgress) -> None:
             # already installed rather than re-resolved from plain PyPI —
             # verified this exact sequencing this session.
             install_packages(["torch", "torchaudio"], variant.torch_index_url, progress)
-            install_packages(_pip_lines(REQUIREMENTS_GPU), None, progress)
+            # numpy pin before parler-tts: _pip_lines skips `-r common`, so
+            # the pin must be installed explicitly first or parler's numba
+            # chain backtracks to llvmlite 0.36 (Python<3.10) on 3.12.
+            # See requirements-gpu.txt.
+            gpu_lines = _pip_lines(REQUIREMENTS_GPU)
+            numpy_lines = [line for line in gpu_lines if line.startswith("numpy")]
+            other_gpu_lines = [line for line in gpu_lines if not line.startswith("numpy")]
+            if numpy_lines:
+                install_packages(numpy_lines, None, progress)
+            install_packages(other_gpu_lines, None, progress)
         else:
             onnxruntime_line = variant.onnxruntime_package  # bare name, no version pin —
             # the GPU-variant onnxruntime packages (onnxruntime-gpu/-rocm/
@@ -104,8 +134,9 @@ def run_setup(progress: InstallProgress) -> None:
 
         progress.set_step("downloading_models")
         models.download_models(tier, log=progress.append_log)
-
-        progress.set_step("done")
+        # Do NOT set "done" here — main.py's /api/setup/start thread still
+        # has to construct Pipeline() (STT/TTS/LLM warm-up) and call
+        # mark_complete() before the UI may leave the Setup screen.
     except SetupError as exc:
         progress.set_error(str(exc))
     except Exception as exc:  # noqa: BLE001 — surface any unexpected failure to the UI, don't crash the thread silently

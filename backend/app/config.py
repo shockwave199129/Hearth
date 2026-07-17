@@ -5,17 +5,53 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+def _bundle_dir() -> Path:
+    """Read-only app/bundle root (requirements files, frozen package data).
+
+    Dev: `backend/`. Frozen PyInstaller onedir: `_internal` (or `_MEIPASS`).
+    """
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            return Path(meipass)
+        return Path(sys.executable).resolve().parent / "_internal"
+    return Path(__file__).resolve().parent.parent
+
+
+def _user_data_dir() -> Path:
+    """Writable persistent root for profiles, models, and pip-installed deps.
+
+    Dev: same as `backend/` (repo checkout). Frozen: OS app-data dir so an
+    installed Windows/macOS/Linux app does not lose onboarding/setup state
+    when the install folder is replaced or is not writable (Program Files).
+    """
+    if getattr(sys, "frozen", False):
+        if sys.platform == "win32":
+            root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        elif sys.platform == "darwin":
+            root = Path.home() / "Library" / "Application Support"
+        else:
+            root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+        path = root / "Hearth"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    return Path(__file__).resolve().parent.parent
+
+
+BACKEND_DIR = _bundle_dir()
+USER_DATA_DIR = _user_data_dir()
 
 # Local dev convenience — e.g. LLAMA_SERVER_BIN when running the backend
 # directly via a venv rather than through the packaged desktop app (which
 # sets env vars itself, see scripts/build_backend.sh/.ps1). Does nothing if
-# backend/.env doesn't exist; never overrides a var already set in the real
-# environment (override=False, load_dotenv's own default).
-load_dotenv(BACKEND_DIR / ".env")
+# the file doesn't exist; never overrides a var already set in the real
+# environment (override=False, load_dotenv's own default). In the packaged
+# app this looks under the OS app-data dir; in dev it's backend/.env.
+load_dotenv(USER_DATA_DIR / ".env")
 
-MODELS_DIR = BACKEND_DIR / "models"
-DATA_DIR = BACKEND_DIR / "data"
+MODELS_DIR = USER_DATA_DIR / "models"
+DATA_DIR = USER_DATA_DIR / "data"
 
 # Where app/setup/installer.py pip-installs the hardware-matched torch/
 # onnxruntime build into, post-first-run (see project setup plan — CI ships
@@ -26,7 +62,12 @@ DATA_DIR = BACKEND_DIR / "data"
 # extend_backend_deps_path() again right after a fresh install completes
 # (covers the *first* launch, extending the already-running process's
 # sys.path without needing a restart).
-BACKEND_DEPS_DIR = BACKEND_DIR / "backend-deps"
+BACKEND_DEPS_DIR = USER_DATA_DIR / "backend-deps"
+
+# Extracted standalone Python used only for first-run pip installs — must be
+# writable, so it lives under USER_DATA_DIR in the packaged app (not inside
+# the read-only install / bundle tree).
+SETUP_PYTHON_EXTRACT_DIR = USER_DATA_DIR / "setup-python"
 
 
 def extend_backend_deps_path() -> None:

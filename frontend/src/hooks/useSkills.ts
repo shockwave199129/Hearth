@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { backendFetch } from "../lib/backendFetch";
 import { friendlyFetchError } from "../lib/errors";
 
 export interface SkillSummary {
@@ -33,7 +34,7 @@ export function useSkills(): UseSkillsResult {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/skills")
+    backendFetch("/api/skills")
       .then((res) => {
         if (!res.ok) throw new Error(`status ${res.status}`);
         return res.json() as Promise<SkillSummary[]>;
@@ -47,7 +48,7 @@ export function useSkills(): UseSkillsResult {
   }, []);
 
   const getSkill = useCallback(async (id: string) => {
-    const res = await fetch(`/api/skills/${id}`);
+    const res = await backendFetch(`/api/skills/${id}`);
     if (!res.ok) throw new Error(`status ${res.status}`);
     return (await res.json()) as SkillDetail;
   }, []);

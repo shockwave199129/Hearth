@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { backendFetch } from "../lib/backendFetch";
 import { friendlyFetchError } from "../lib/errors";
 
 export interface MemorySummary {
@@ -38,7 +39,7 @@ export function useMemories(): UseMemoriesResult {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch("/api/memories")
+    backendFetch("/api/memories")
       .then((res) => {
         if (!res.ok) throw new Error(`status ${res.status}`);
         return res.json() as Promise<MemorySummary[]>;
@@ -52,14 +53,14 @@ export function useMemories(): UseMemoriesResult {
   }, [refreshToken]);
 
   const getMemory = useCallback(async (id: string) => {
-    const res = await fetch(`/api/memories/${id}`);
+    const res = await backendFetch(`/api/memories/${id}`);
     if (!res.ok) throw new Error(`status ${res.status}`);
     return (await res.json()) as MemoryDetail;
   }, []);
 
   const updateMemory = useCallback(
     async (id: string, text: string) => {
-      const res = await fetch(`/api/memories/${id}`, {
+      const res = await backendFetch(`/api/memories/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
@@ -74,7 +75,7 @@ export function useMemories(): UseMemoriesResult {
 
   const deleteMemory = useCallback(
     async (id: string) => {
-      const res = await fetch(`/api/memories/${id}`, { method: "DELETE" });
+      const res = await backendFetch(`/api/memories/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`status ${res.status}`);
       refresh();
     },

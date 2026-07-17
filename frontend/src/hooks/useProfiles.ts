@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { backendFetch } from "../lib/backendFetch";
 import { friendlyFetchError } from "../lib/errors";
 import type { Profile } from "./useProfile";
 
@@ -25,7 +26,7 @@ export function useProfiles(): UseProfilesResult {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch("/api/profiles")
+    backendFetch("/api/profiles")
       .then((res) => {
         if (!res.ok) throw new Error(`status ${res.status}`);
         return res.json() as Promise<Profile[]>;
@@ -40,7 +41,7 @@ export function useProfiles(): UseProfilesResult {
 
   const activateProfile = useCallback(
     async (userId: string) => {
-      const res = await fetch(`/api/profiles/${userId}/activate`, { method: "POST" });
+      const res = await backendFetch(`/api/profiles/${userId}/activate`, { method: "POST" });
       if (!res.ok) throw new Error(`status ${res.status}`);
       const activated = (await res.json()) as Profile;
       refresh();
@@ -51,7 +52,7 @@ export function useProfiles(): UseProfilesResult {
 
   const deleteProfile = useCallback(
     async (userId: string) => {
-      const res = await fetch(`/api/profiles/${userId}`, { method: "DELETE" });
+      const res = await backendFetch(`/api/profiles/${userId}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`status ${res.status}`);
       refresh();
     },

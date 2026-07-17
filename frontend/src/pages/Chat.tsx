@@ -3,22 +3,34 @@ import "./Chat.css";
 import { VoiceOrb, type OrbState } from "../components/VoiceOrb";
 import { TranscriptLog } from "../components/TranscriptLog";
 import { useAudioRecorder } from "../hooks/useAudioRecorder";
-import { useCompanionSocket } from "../hooks/useCompanionSocket";
+import { useCompanionSocket, type SocketStatus } from "../hooks/useCompanionSocket";
 import { useProfile } from "../hooks/useProfile";
+import { wsUrl } from "../lib/backendUrl";
 
-function socketUrl(): string {
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${protocol}://${window.location.host}/ws`;
+function socketStatusMessage(status: SocketStatus): string | null {
+  switch (status) {
+    case "connecting":
+      return "Connecting to your companion…";
+    case "reconnecting":
+      return "Connection lost — reconnecting…";
+    case "closed":
+    case "error":
+      return "Offline — trying again…";
+    default:
+      return null;
+  }
 }
 
 export function Chat() {
   const { profile } = useProfile();
-  const { turns, isThinking, isSpeaking, speakingAmplitude, sendUtterance, sendText } = useCompanionSocket(
-    useMemo(socketUrl, []),
-  );
+  const { status, turns, isThinking, isSpeaking, speakingAmplitude, sendUtterance, sendText } =
+    useCompanionSocket(useMemo(() => wsUrl(), []));
   const onUtterance = useCallback((audio: Float32Array) => sendUtterance(audio), [sendUtterance]);
   const { state: recorderState, amplitude, error, start, stop } = useAudioRecorder(onUtterance);
   const [draft, setDraft] = useState("");
+
+  const connected = status === "open";
+  const statusMessage = socketStatusMessage(status);
 
   const orbState: OrbState =
     recorderState === "listening" ? "listening" : isThinking ? "thinking" : isSpeaking ? "speaking" : "idle";
@@ -26,6 +38,7 @@ export function Chat() {
   const busy = orbState === "thinking" || orbState === "speaking";
 
   const handleOrbClick = () => {
+    if (!connected) return;
     if (orbState === "idle") void start();
     else if (orbState === "listening") stop();
   };
@@ -33,7 +46,7 @@ export function Chat() {
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const text = draft.trim();
-    if (!text || busy) return;
+    if (!text || busy || !connected) return;
     sendText(text);
     setDraft("");
   };
@@ -45,8 +58,13 @@ export function Chat() {
           state={orbState}
           amplitude={orbAmplitude}
           onClick={handleOrbClick}
-          disabled={busy}
+          disabled={busy || !connected}
         />
+        {statusMessage && (
+          <p className="chat-page__status" aria-live="polite">
+            {statusMessage}
+          </p>
+        )}
         {error && <p className="chat-page__error">{error}</p>}
       </div>
       <TranscriptLog turns={turns} companionName={profile?.companion_name ?? "Companion"} />
@@ -54,12 +72,16 @@ export function Chat() {
         <input
           type="text"
           className="chat-page__text-input"
-          placeholder="Or type instead…"
+          placeholder={connected ? "Or type instead…" : "Waiting for connection…"}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          disabled={recorderState === "listening"}
+          disabled={recorderState === "listening" || !connected}
         />
-        <button type="submit" className="chat-page__text-send" disabled={busy || !draft.trim()}>
+        <button
+          type="submit"
+          className="chat-page__text-send"
+          disabled={busy || !connected || !draft.trim()}
+        >
           Send
         </button>
       </form>

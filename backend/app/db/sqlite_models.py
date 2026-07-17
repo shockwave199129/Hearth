@@ -33,6 +33,17 @@ CREATE TABLE IF NOT EXISTS active_profile (
 );
 """
 
+# Install-wide first-run setup gate (packages + models). Singleton row —
+# once complete=1, subsequent launches skip the Setup UI. Cleared if the
+# required model files disappear so the user can re-run setup.
+SETUP_STATE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS setup_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    complete INTEGER NOT NULL DEFAULT 0,
+    completed_at TEXT
+);
+"""
+
 # One row per profile tracking when the companion last checked in on them
 # (project-plan.md §8).
 CHECKIN_SCHEMA = """
@@ -175,6 +186,7 @@ def get_connection(db_path: Path):
     conn.execute(_LEGACY_PROFILE_SCHEMA)
     conn.execute(PROFILES_SCHEMA)
     conn.execute(ACTIVE_PROFILE_SCHEMA)
+    conn.execute(SETUP_STATE_SCHEMA)
     conn.execute(CHECKIN_SCHEMA)
     conn.execute(CRISIS_EVENTS_SCHEMA)
     conn.execute(ESCALATIONS_SCHEMA)
