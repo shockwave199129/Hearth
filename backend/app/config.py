@@ -19,23 +19,94 @@ def _bundle_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def _install_root() -> Path:
+    """Packaged app install directory (folder that contains the Tauri shell).
+
+    Frozen layout (see tauri.conf.json bundle.resources + installer.py):
+      {install}/resources/backend/hearth-backend[.exe]  <- sys.executable
+      {install}/resources/llama-cpp/
+      {install}/resources/setup-python/   (archive)
+    so three parents up from the backend exe is {install}/.
+    """
+    return Path(sys.executable).resolve().parent.parent.parent
+
+
+def _os_app_data_hearth() -> Path:
+    """Legacy / fallback location when the install dir is not writable."""
+    if sys.platform == "win32":
+        root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support"
+    else:
+        root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+    return root / "Hearth"
+
+
+def _dir_is_writable(path: Path) -> bool:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".hearth_write_test"
+        probe.write_text("", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        return True
+    except OSError:
+        return False
+
+
+# Only these were written under the old OS app-data root — never copy the
+# whole folder (NSIS per-user installs often live at the same path).
+_LEGACY_USER_DATA_NAMES = ("data", "models", "backend-deps", "setup-python", ".env")
+
+
+def _migrate_legacy_user_data(target: Path) -> None:
+    """One-time copy from %LOCALAPPDATA%\\Hearth (etc.) into {install}/userdata.
+
+    Skips when target already has content or the legacy dir is missing.
+    Best-effort only; copies known data names only.
+    """
+    legacy = _os_app_data_hearth()
+    if not legacy.is_dir() or legacy.resolve() == target.resolve():
+        return
+    if any(target.iterdir()):
+        return
+    try:
+        import shutil
+
+        copied = False
+        for name in _LEGACY_USER_DATA_NAMES:
+            child = legacy / name
+            if not child.exists():
+                continue
+            dest = target / name
+            if child.is_dir():
+                shutil.copytree(child, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(child, dest)
+            copied = True
+        if not copied:
+            return
+    except OSError:
+        pass
+
+
 def _user_data_dir() -> Path:
     """Writable persistent root for profiles, models, and pip-installed deps.
 
-    Dev: same as `backend/` (repo checkout). Frozen: OS app-data dir so an
-    installed Windows/macOS/Linux app does not lose onboarding/setup state
-    when the install folder is replaced or is not writable (Program Files).
+    Dev: same as `backend/` (repo checkout).
+
+    Frozen: `{install}/userdata` next to the installed app (models,
+    backend-deps, profile.db stay with the install). Falls back to the OS
+    app-data dir (`%LOCALAPPDATA%\\Hearth`, etc.) only if the install
+    folder is not writable (e.g. machine-wide Program Files).
     """
     if getattr(sys, "frozen", False):
-        if sys.platform == "win32":
-            root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-        elif sys.platform == "darwin":
-            root = Path.home() / "Library" / "Application Support"
-        else:
-            root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-        path = root / "Hearth"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        local = _install_root() / "userdata"
+        if _dir_is_writable(local):
+            _migrate_legacy_user_data(local)
+            return local
+        fallback = _os_app_data_hearth()
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
     return Path(__file__).resolve().parent.parent
 
 
@@ -46,8 +117,8 @@ USER_DATA_DIR = _user_data_dir()
 # directly via a venv rather than through the packaged desktop app (which
 # sets env vars itself, see scripts/build_backend.sh/.ps1). Does nothing if
 # the file doesn't exist; never overrides a var already set in the real
-# environment (override=False, load_dotenv's own default). In the packaged
-# app this looks under the OS app-data dir; in dev it's backend/.env.
+# environment (override=False, load_dotenv's own default). Packaged: under
+# {install}/userdata (or OS app-data fallback); dev: backend/.env.
 load_dotenv(USER_DATA_DIR / ".env")
 
 MODELS_DIR = USER_DATA_DIR / "models"

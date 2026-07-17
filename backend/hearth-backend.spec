@@ -73,11 +73,24 @@ hiddenimports = [
     "moonshine_voice.transcriber",
     # Stdlib modules not referenced by the thin freeze's import graph, but
     # pulled in at first-run after parler-tts / descript-audiotools land in
-    # backend-deps (audiotools -> ipython -> timeit). Without these, Pipeline()
-    # dies with "No module named 'timeit'" after setup packages succeed.
+    # backend-deps (audiotools -> ipython -> timeit / pickletools / …).
+    # Without these, Pipeline() dies with "No module named '…'" after setup
+    # packages succeed (seen in the field for timeit, then pickletools).
     "timeit",
     "pydoc",
     "doctest",
+    "pickletools",
+    "code",
+    "codeop",
+    "pdb",
+    "bdb",
+    "cmd",
+    "profile",
+    "cProfile",
+    "pstats",
+    "rlcompleter",
+    "dis",
+    "opcode",
 ]
 
 # Packages with native extensions / plugin-style dynamic imports that
