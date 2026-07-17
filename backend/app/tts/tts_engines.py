@@ -1,7 +1,12 @@
 """TTS engines: Parler-TTS-Tiny-v1 (tiers S/A) with an ONNX Kokoro-82M
 fallback for tiers B/C, where Parler would be usable but slow enough to
 hurt the conversational feel. See project-plan.md §2.
+
+Weights are loaded from plain directories under TTS_MODELS_DIR (populated by
+app.setup.models during first-run setup), not from the Hugging Face hub
+cache's blobs/snapshots layout — see ensure_parler_model / ensure_kokoro_model.
 """
+import json
 from pathlib import Path
 
 import numpy as np
@@ -36,6 +41,8 @@ class ParlerEngine(TtsEngine):
         from parler_tts import ParlerTTSForConditionalGeneration
         from transformers import AutoTokenizer
 
+        from app.setup.models import ensure_parler_model
+
         # tier_manager.py's tier pick is based on detected hardware (VRAM),
         # not on whether the installed `torch` build actually has CUDA
         # support — plain `pip install torch` on Windows/Linux can resolve
@@ -57,47 +64,50 @@ class ParlerEngine(TtsEngine):
             )
             device = "cpu"
 
+        model_dir = str(ensure_parler_model())
         self._device = device
         self._model = ParlerTTSForConditionalGeneration.from_pretrained(
-            "parler-tts/parler-tts-tiny-v1"
+            model_dir
         ).to(device)
-        self._tokenizer = AutoTokenizer.from_pretrained("parler-tts/parler-tts-tiny-v1")
+        self._tokenizer = AutoTokenizer.from_pretrained(model_dir)
         self.sample_rate = self._model.config.sampling_rate
 
     def synthesize(self, text: str, voice: str) -> np.ndarray:
         import torch
 
-        description = self._VOICE_DESCRIPTIONS.get(voice, self._VOICE_DESCRIPTIONS["female"])
-        input_ids = self._tokenizer(description, return_tensors="pt").input_ids.to(self._device)
-        prompt_input_ids = self._tokenizer(text, return_tensors="pt").input_ids.to(self._device)
+        description = self._VOICE_DESCRIPTIONS.get(
+            voice, self._VOICE_DESCRIPTIONS["female"]
+        )
+        input_ids = self._tokenizer(description, return_tensors="pt").input_ids.to(
+            self._device
+        )
+        prompt_input_ids = self._tokenizer(text, return_tensors="pt").input_ids.to(
+            self._device
+        )
         with torch.no_grad():
-            generation = self._model.generate(input_ids=input_ids, prompt_input_ids=prompt_input_ids)
+            generation = self._model.generate(
+                input_ids=input_ids, prompt_input_ids=prompt_input_ids
+            )
         return generation.cpu().numpy().squeeze()
 
 
 class KokoroEngine(TtsEngine):
-    """Uses NeuML/kokoro-fp16-onnx (huggingface.co/NeuML/kokoro-fp16-onnx)
-    directly via onnxruntime + ttstokenizer, per that model card's own ONNX
-    Runtime example — not its alternative txtai pipeline, whose own base
-    install pulls in torch/transformers/faiss-cpu regardless, which would
-    defeat the point of this being the lightweight tier B/C fallback.
-    Model files (model.onnx, voices.json) auto-download from HuggingFace on
-    first use via hf_hub_download, same as ParlerEngine — no manual
-    download step."""
+    """Uses NeuML/kokoro-fp16-onnx via onnxruntime + ttstokenizer, per that
+    model card's ONNX Runtime example. Files come from TTS_KOKORO_DIR
+    (see app.setup.models.ensure_kokoro_model)."""
 
     _VOICE_MAP = {"male": "am_adam", "female": "af_sky"}
-    _REPO_ID = "NeuML/kokoro-fp16-onnx"
 
     def __init__(self):
-        import json
-
         import onnxruntime
-        from huggingface_hub import hf_hub_download
 
-        model_path = hf_hub_download(self._REPO_ID, "model.onnx")
-        voices_path = hf_hub_download(self._REPO_ID, "voices.json")
-        self._session = onnxruntime.InferenceSession(model_path)
-        self._voices = json.loads(Path(voices_path).read_text())
+        from app.setup.models import ensure_kokoro_model
+
+        model_dir = ensure_kokoro_model()
+        model_path = model_dir / "model.onnx"
+        voices_path = model_dir / "voices.json"
+        self._session = onnxruntime.InferenceSession(str(model_path))
+        self._voices = json.loads(Path(voices_path).read_text(encoding="utf-8"))
         self._tokenizer = None  # built lazily below: ttstokenizer import is deferred too
         self.sample_rate = 24000
 

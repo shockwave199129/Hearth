@@ -97,6 +97,10 @@ pnpm run tauri:dev     # run the desktop shell against the Vite dev server
 pnpm run tauri:build   # build an installer for the current platform
 ```
 
+**Windows local installer (CI parity, no tag needed):** from repo root in
+PowerShell, `pwsh scripts/build_windows_installer.ps1` — then install the
+MSI/NSIS under `desktop/src-tauri/target/release/bundle/`.
+
 The packaged installer is a thin build — no torch/onnxruntime/parler-tts/
 kokoro frozen in — and detects the installing machine's hardware on first
 launch to install the matching TTS package and download models itself, in

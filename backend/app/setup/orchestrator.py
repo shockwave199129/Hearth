@@ -4,7 +4,14 @@ frontend drives this, and the project setup plan for the overall design.
 """
 from pathlib import Path
 
-from app.config import BACKEND_DIR, EMBEDDING_MODEL_FILE, EMBEDDING_MODELS_DIR, LLM_MODELS_DIR
+from app.config import (
+    BACKEND_DIR,
+    EMBEDDING_MODEL_FILE,
+    EMBEDDING_MODELS_DIR,
+    LLM_MODELS_DIR,
+    TTS_KOKORO_DIR,
+    TTS_PARLER_DIR,
+)
 from app.hardware.detect import detect_hardware
 from app.hardware.tier_manager import TierConfig, pick_tier, resolve_paths
 from app.setup import hardware_variant, models
@@ -49,7 +56,13 @@ def _packages_engine_importable(tier: TierConfig) -> bool:
 def _models_present(tier: TierConfig) -> bool:
     llm_path = Path(resolve_paths(tier)["llm_path"])
     embedding_path = EMBEDDING_MODELS_DIR / EMBEDDING_MODEL_FILE
-    return llm_path.exists() and embedding_path.exists()
+    if not (llm_path.exists() and embedding_path.exists()):
+        return False
+    if tier.tts_engine in ("parler_gpu", "parler_cpu"):
+        return (TTS_PARLER_DIR / "config.json").is_file()
+    return (TTS_KOKORO_DIR / "model.onnx").is_file() and (
+        TTS_KOKORO_DIR / "voices.json"
+    ).is_file()
 
 
 def detect_status() -> dict:

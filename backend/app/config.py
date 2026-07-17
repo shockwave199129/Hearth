@@ -121,6 +121,20 @@ USER_DATA_DIR = _user_data_dir()
 # {install}/userdata (or OS app-data fallback); dev: backend/.env.
 load_dotenv(USER_DATA_DIR / ".env")
 
+
+def _configure_huggingface_env() -> None:
+    """Keep Hugging Face caches under our userdata and avoid Windows hub
+    symlinks. Parler/transformers opening a hub snapshot `config.json` that
+    is a reparse point under a user path with spaces has failed in the field
+    with OSError Errno 22 (Invalid argument). setdefault so an explicit
+    shell/.env value still wins.
+    """
+    os.environ.setdefault("HF_HOME", str(USER_DATA_DIR / "hf-home"))
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
+
+
+_configure_huggingface_env()
+
 MODELS_DIR = USER_DATA_DIR / "models"
 DATA_DIR = USER_DATA_DIR / "data"
 
@@ -154,6 +168,13 @@ LLM_MODELS_DIR = MODELS_DIR / "llm"
 STT_MODELS_DIR = MODELS_DIR / "stt"
 TTS_MODELS_DIR = MODELS_DIR / "tts"
 EMBEDDING_MODELS_DIR = MODELS_DIR / "embedding"
+
+# Parler-TTS weights live here as a plain directory (snapshot_download
+# local_dir) — not the hub cache's blobs/snapshots symlink layout.
+TTS_PARLER_REPO = "parler-tts/parler-tts-tiny-v1"
+TTS_PARLER_DIR = TTS_MODELS_DIR / "parler-tts-tiny-v1"
+TTS_KOKORO_REPO = "NeuML/kokoro-fp16-onnx"
+TTS_KOKORO_DIR = TTS_MODELS_DIR / "kokoro-fp16-onnx"
 
 LLAMA_SERVER_BIN = os.environ.get("LLAMA_SERVER_BIN", "llama-server")
 LLM_SERVER_HOST = "127.0.0.1"
