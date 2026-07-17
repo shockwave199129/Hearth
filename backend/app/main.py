@@ -778,10 +778,6 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         logger.info("client disconnected")
     finally:
         _pipeline.run_maintenance(memory)
-    except WebSocketDisconnect:
-        logger.info("client disconnected")
-    finally:
-        _pipeline.run_maintenance(memory)
 
 
 def run_cli_loop() -> None:

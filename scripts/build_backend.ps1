@@ -25,6 +25,14 @@ try {
         --distpath "$ResourcesDir" `
         --workpath "$RepoRoot\.pyinstaller-build" `
         hearth-backend.spec
+    # $ErrorActionPreference only turns PowerShell-native terminating errors
+    # into stops — it does NOT apply to a non-zero exit code from an external
+    # command like PyInstaller, so a real freeze failure here would otherwise
+    # print "Frozen backend" and let CI proceed straight into a confusing
+    # "resource path doesn't exist" error at the Tauri build step instead.
+    if ($LASTEXITCODE -ne 0) {
+        throw "PyInstaller failed with exit code $LASTEXITCODE"
+    }
 } finally {
     Pop-Location
 }
