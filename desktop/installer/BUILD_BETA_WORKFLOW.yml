@@ -1,0 +1,371 @@
+name: Build Beta Installers
+
+on:
+  push:
+    tags:
+      - 'v*-beta*'
+      - 'beta-*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Beta version (e.g., 0.2.7-beta.1)'
+        required: false
+        default: ''
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install pnpm
+        run: npm install -g pnpm
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+      
+      - name: Install NSIS
+        run: choco install nsis -y
+        shell: cmd
+      
+      - name: Get version
+        id: version
+        run: |
+          if ("${{ github.event.inputs.version }}" -ne "") {
+            echo "VERSION=${{ github.event.inputs.version }}" >> $env:GITHUB_ENV
+          } else {
+            $tag = "${{ github.ref }}".Replace("refs/tags/", "")
+            echo "VERSION=$tag" >> $env:GITHUB_ENV
+          }
+        shell: powershell
+      
+      - name: Build installer UI
+        run: |
+          cd desktop\installer-ui
+          pnpm install
+          pnpm run build
+        shell: cmd
+      
+      - name: Build Rust backend
+        run: |
+          cd desktop\installer
+          cargo build --release
+        shell: cmd
+      
+      - name: Create NSIS installer
+        run: |
+          cd desktop\installer
+          $env:VERSION = "${{ env.VERSION }}"
+          & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=$env:VERSION /V4 nsis\installer.nsi
+        shell: powershell
+      
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hearth-windows-installer
+          path: 'desktop/installer/Hearth-*-installer.exe'
+          retention-days: 7
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install pnpm
+        run: npm install -g pnpm
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          profile: minimal
+      
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event.inputs.version }}" != "" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            TAG="${{ github.ref }}"
+            TAG="${TAG#refs/tags/}"
+            echo "VERSION=$TAG" >> $GITHUB_ENV
+          fi
+      
+      - name: Build installer UI
+        run: |
+          cd desktop/installer-ui
+          pnpm install
+          pnpm run build
+      
+      - name: Build Rust backend
+        run: |
+          cd desktop/installer
+          cargo build --release --target ${{ matrix.target }}
+      
+      - name: Create DMG
+        run: |
+          cd desktop/installer
+          TEMP_DMG="Hearth-${{ env.VERSION }}-${{ matrix.target }}-temp.dmg"
+          FINAL_DMG="Hearth-${{ env.VERSION }}-${{ matrix.target }}.dmg"
+          
+          hdiutil create -volname "Hearth" -srcfolder "target/${{ matrix.target }}/release" -ov -format UDZO "$TEMP_DMG"
+          mv "$TEMP_DMG" "$FINAL_DMG"
+          
+          echo "Created: $FINAL_DMG"
+      
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hearth-macos-installer-${{ matrix.target }}
+          path: 'desktop/installer/Hearth-*.dmg'
+          retention-days: 7
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libssl-dev libfontconfig1-dev rpm
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install pnpm
+        run: npm install -g pnpm
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+      
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event.inputs.version }}" != "" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            TAG="${{ github.ref }}"
+            TAG="${TAG#refs/tags/}"
+            echo "VERSION=$TAG" >> $GITHUB_ENV
+          fi
+      
+      - name: Build installer UI
+        run: |
+          cd desktop/installer-ui
+          pnpm install
+          pnpm run build
+      
+      - name: Build Rust backend
+        run: |
+          cd desktop/installer
+          cargo build --release
+      
+      - name: Create DEB package
+        run: |
+          cd desktop/installer
+          VERSION="${{ env.VERSION }}"
+          DEB_DIR="hearth_${VERSION}_amd64"
+          mkdir -p "$DEB_DIR/usr/bin"
+          mkdir -p "$DEB_DIR/usr/share/applications"
+          mkdir -p "$DEB_DIR/DEBIAN"
+          
+          cp "target/release/hearth-installer" "$DEB_DIR/usr/bin/"
+          
+          cat > "$DEB_DIR/DEBIAN/control" << EOF
+          Package: hearth
+          Version: $VERSION
+          Architecture: amd64
+          Maintainer: Hearth <info@hearth.app>
+          Description: Privacy-first emotional-support voice companion
+          EOF
+          
+          cat > "$DEB_DIR/usr/share/applications/hearth.desktop" << EOF
+          [Desktop Entry]
+          Type=Application
+          Name=Hearth
+          Exec=/usr/bin/hearth-installer
+          Icon=hearth
+          Categories=Utility;
+          EOF
+          
+          dpkg-deb --build "$DEB_DIR" "hearth_${VERSION}_amd64.deb"
+      
+      - name: Create RPM package
+        run: |
+          cd desktop/installer
+          VERSION="${{ env.VERSION }}"
+          
+          cat > hearth.spec << EOF
+          Name: hearth
+          Version: $VERSION
+          Release: 1
+          Summary: Privacy-first emotional-support voice companion
+          License: MIT
+          URL: https://github.com/shockwave199129/Hearth
+          
+          %description
+          Hearth is a privacy-first emotional-support voice companion that runs entirely on your machine.
+          
+          %files
+          /usr/bin/hearth-installer
+          /usr/share/applications/hearth.desktop
+          
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          cp ./target/release/hearth-installer %{buildroot}/usr/bin/
+          mkdir -p %{buildroot}/usr/share/applications
+          cp ./hearth.desktop %{buildroot}/usr/share/applications/
+          
+          %post
+          echo "Hearth installed successfully!"
+          
+          %postun
+          echo "Hearth uninstalled."
+          EOF
+          
+          rpmbuild -bb hearth.spec
+      
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hearth-linux-installers
+          path: |
+            desktop/installer/*.deb
+            $HOME/rpmbuild/RPMS/x86_64/*.rpm
+          retention-days: 7
+
+  create-beta-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./release-assets
+      
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event.inputs.version }}" != "" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            TAG="${{ github.ref }}"
+            TAG="${TAG#refs/tags/}"
+            echo "VERSION=$TAG" >> $GITHUB_ENV
+          fi
+      
+      - name: Create Release Notes
+        run: |
+          cat > RELEASE_NOTES.md << 'EOF'
+          # Hearth ${{ env.VERSION }} - Beta Release
+          
+          This is a **beta release** of Hearth. Please report any issues on [GitHub](https://github.com/shockwave199129/Hearth/issues).
+          
+          ## 🆕 What's New
+          
+          - Cross-platform installation wizard
+          - Automatic hardware detection
+          - Smart tier recommendation (S/A/B/C)
+          - Beautiful, responsive UI
+          
+          ## 📦 Installation
+          
+          ### Windows
+          Download `Hearth-${{ env.VERSION }}-installer.exe` and run it. The installer wizard will guide you through setup.
+          
+          ### macOS
+          Download `Hearth-${{ env.VERSION }}-aarch64-apple-darwin.dmg` (Apple Silicon) or `Hearth-${{ env.VERSION }}-x86_64-apple-darwin.dmg` (Intel).
+          
+          ### Linux
+          - **Debian/Ubuntu**: `sudo dpkg -i hearth_${{ env.VERSION }}_amd64.deb`
+          - **Fedora/RHEL**: `sudo rpm -i hearth-${{ env.VERSION }}-1.x86_64.rpm`
+          
+          ## 🐛 Known Issues
+          
+          - GPU detection may require drivers to be installed
+          - Initial model download can take 10-30 minutes depending on internet speed
+          
+          ## 💬 Feedback
+          
+          Please report bugs and feature requests on [GitHub Issues](https://github.com/shockwave199129/Hearth/issues).
+          
+          Thank you for testing! 🙏
+          EOF
+      
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.VERSION }}
+          release_name: Hearth ${{ env.VERSION }} (Beta)
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: true
+      
+      - name: Upload Release Assets
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const release = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: '${{ env.VERSION }}'
+            });
+            
+            const assetsDir = './release-assets';
+            const uploadAsset = async (filePath) => {
+              const file = fs.readFileSync(filePath);
+              const fileName = path.basename(filePath);
+              await github.rest.repos.uploadReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: release.data.id,
+                name: fileName,
+                data: file
+              });
+              console.log(`Uploaded: ${fileName}`);
+            };
+            
+            const walkDir = (dir) => {
+              const files = fs.readdirSync(dir);
+              for (const file of files) {
+                const filePath = path.join(dir, file);
+                const stat = fs.statSync(filePath);
+                if (stat.isDirectory()) {
+                  walkDir(filePath);
+                } else if (file.match(/\.(exe|dmg|deb|rpm)$/i)) {
+                  uploadAsset(filePath);
+                }
+              }
+            };
+            
+            walkDir(assetsDir);
