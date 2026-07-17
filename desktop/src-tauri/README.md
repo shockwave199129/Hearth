@@ -119,10 +119,15 @@ On a Windows machine, one script mirrors the GitHub Actions Windows job
 
 ```powershell
 git pull
-pwsh scripts/build_windows_installer.ps1
-# optional: pwsh scripts/build_windows_installer.ps1 -Version 0.2.11
+.\scripts\build_windows_installer.ps1
+# optional: .\scripts\build_windows_installer.ps1 -Version 0.2.11
+#
+# If you get an execution-policy error:
+#   powershell -ExecutionPolicy Bypass -File .\scripts\build_windows_installer.ps1
 ```
 
+(`pwsh` is PowerShell 7+; the built-in Windows shell is fine — run the
+`.ps1` directly as above.)
 Installers land under `desktop/src-tauri/target/release/bundle/msi/` and
 `.../nsis/`. Install one, then exercise Setup → Chat. Default version is
 `0.0.0` (same as CI `workflow_dispatch` non-tag runs). Unsigned builds may
@@ -162,7 +167,7 @@ doesn't have one yet).
 | Platform | Prerequisites | Command | Output |
 |---|---|---|---|
 | Linux | The `apt-get install` above, Python 3.12 | `scripts/build_backend.sh` → `scripts/fetch_llama_cpp.py` → `scripts/fetch_setup_python.py` → `pnpm run tauri:build` (from `desktop/`) | `src-tauri/target/release/bundle/deb/*.deb`, `.../rpm/*.rpm` |
-| Windows | Rust (MSVC toolchain) + [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) (C++ workload), Python 3.12, Node/pnpm. WiX Toolset v3 for `.msi` is auto-downloaded by Tauri's bundler on first build. | **Preferred:** `pwsh scripts/build_windows_installer.ps1` from repo root (CI parity). Manual: `scripts/build_backend.ps1` → `python scripts/fetch_llama_cpp.py` → `python scripts/fetch_setup_python.py` → `pnpm run tauri:build` (from `desktop/`) | `.../bundle/msi/*.msi`, `.../nsis/*-setup.exe` |
+| Windows | Rust (MSVC toolchain) + [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) (C++ workload), Python 3.12, Node/pnpm. WiX Toolset v3 for `.msi` is auto-downloaded by Tauri's bundler on first build. | **Preferred:** `.\scripts\build_windows_installer.ps1` from repo root (CI parity). Manual: `scripts/build_backend.ps1` → `python scripts/fetch_llama_cpp.py` → `python scripts/fetch_setup_python.py` → `pnpm run tauri:build` (from `desktop/`) | `.../bundle/msi/*.msi`, `.../nsis/*-setup.exe` |
 | macOS | Xcode Command Line Tools (`xcode-select --install`), Python 3.12 | `scripts/build_backend.sh` → `scripts/fetch_llama_cpp.py` → `scripts/fetch_setup_python.py` → `pnpm run tauri:build` (from `desktop/`) | `.../bundle/dmg/*.dmg`, `.../bundle/macos/*.app` |
 
 **Code signing — not done here.** Unsigned builds will warn or outright

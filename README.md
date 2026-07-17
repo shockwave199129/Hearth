@@ -98,8 +98,10 @@ pnpm run tauri:build   # build an installer for the current platform
 ```
 
 **Windows local installer (CI parity, no tag needed):** from repo root in
-PowerShell, `pwsh scripts/build_windows_installer.ps1` — then install the
-MSI/NSIS under `desktop/src-tauri/target/release/bundle/`.
+PowerShell, `.\scripts\build_windows_installer.ps1` — then install the
+MSI/NSIS under `desktop/src-tauri/target/release/bundle/`. (Use
+`powershell -ExecutionPolicy Bypass -File .\scripts\build_windows_installer.ps1`
+if scripts are blocked. You do not need the `pwsh` command.)
 
 The packaged installer is a thin build — no torch/onnxruntime/parler-tts/
 kokoro frozen in — and detects the installing machine's hardware on first

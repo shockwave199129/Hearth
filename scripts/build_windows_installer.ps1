@@ -2,10 +2,15 @@
 # Windows job so you can git pull on a Windows machine, produce MSI/NSIS
 # without tagging, and test Setup → Chat there.
 #
-# Usage (from repo root, PowerShell):
-#   pwsh scripts/build_windows_installer.ps1
-#   pwsh scripts/build_windows_installer.ps1 -Version 0.2.11
+# Usage (from repo root, in Windows PowerShell or PowerShell 7):
+#   .\scripts\build_windows_installer.ps1
+#   .\scripts\build_windows_installer.ps1 -Version 0.2.11
 #
+# If scripts are blocked by execution policy:
+#   powershell -ExecutionPolicy Bypass -File .\scripts\build_windows_installer.ps1
+#
+# Note: `pwsh` is PowerShell 7+ only. Built-in Windows PowerShell is
+# `powershell` — you do not need `pwsh` for this script.
 # Prerequisites: Python 3.12+, Node/pnpm, Rust stable + VS Build Tools
 # (C++ workload). WiX for MSI is fetched by Tauri on first build.
 # See desktop/src-tauri/README.md.
