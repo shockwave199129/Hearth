@@ -1,0 +1,13 @@
+name: Journaling
+skill_id: journaling
+version: 1.0.0
+description: Simple prompts for processing a day or feeling in writing.
+tags: [journaling, reflection, processing]
+when_use: [processing, reflection, end of day, stuck]
+avoid: [acute distress, panic, immediate crisis]
+conversation_depth: [medium, deep]
+values_implemented: [understanding_before_advice, curiosity_over_assumption]
+estimated_tokens: 140
+estimated_latency: 0
+category: reflection
+

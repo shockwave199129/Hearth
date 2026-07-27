@@ -1,0 +1,4 @@
+input: "I understand what happened and I just want to think about it."
+expected_strategy: listen
+expect_skill: null
+

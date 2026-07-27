@@ -14,13 +14,15 @@ import * as notifications from "../lib/notifications";
 
 export function Settings() {
   const { status, error } = useTierStatus();
-  const { profile, error: profileError, setSpeakReplies } = useProfile();
+  const { profile, error: profileError, setSpeakReplies, setCommunicationPreferences } = useProfile();
   const { status: checkinStatus, error: checkinError } = useCheckins();
   const { status: safetyStatus, error: safetyError } = useSafetyStatus();
   const { showAlert } = useAlert();
   const [theme, setTheme] = useState<Theme>(getStoredTheme);
   const [speakRepliesBusy, setSpeakRepliesBusy] = useState(false);
   const [speakRepliesError, setSpeakRepliesError] = useState<string | null>(null);
+  const [prefsBusy, setPrefsBusy] = useState(false);
+  const [prefsError, setPrefsError] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(notifications.isEnabledPreference);
 
   const handleThemeChange = (next: Theme) => {
@@ -41,6 +43,28 @@ export function Settings() {
       showAlert({ type: "error", message });
     } finally {
       setSpeakRepliesBusy(false);
+    }
+  };
+
+  const handleCommunicationPreferencesUpdate = async (
+    next: "casual" | "neutral" | "formal",
+    responseLength: "short" | "balanced" | "long",
+  ) => {
+    if (!profile) return;
+    setPrefsBusy(true);
+    setPrefsError(null);
+    try {
+      await setCommunicationPreferences({
+        communication_formality: next,
+        response_length: responseLength,
+      });
+      showAlert({ type: "success", message: "Communication style updated." });
+    } catch (err) {
+      const message = friendlyActionError(err, "Settings.communicationPreferences", "Couldn't update that setting.");
+      setPrefsError(message);
+      showAlert({ type: "error", message });
+    } finally {
+      setPrefsBusy(false);
     }
   };
 
@@ -151,11 +175,50 @@ export function Settings() {
               <dd>{profile.preferred_voice}</dd>
             </div>
             <div>
+              <dt>Formality</dt>
+              <dd>{profile.communication_formality}</dd>
+            </div>
+            <div>
+              <dt>Response length</dt>
+              <dd>{profile.response_length}</dd>
+            </div>
+            <div>
               <dt>What's on your mind</dt>
               <dd>{profile.stressors.length ? profile.stressors.join(", ") : "—"}</dd>
             </div>
           </dl>
         ) : null}
+        {profile && (
+          <div className="settings__field">
+            <span className="settings__field-label">Communication style</span>
+            <div className="settings__segmented">
+              {(["casual", "neutral", "formal"] as const).map((option) => (
+                <button
+                  key={option}
+                  className={`settings__segment${profile.communication_formality === option ? " settings__segment--active" : ""}`}
+                  onClick={() => option !== profile.communication_formality && handleCommunicationPreferencesUpdate(option, profile.response_length)}
+                  disabled={prefsBusy}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+            <span className="settings__field-label">Response length</span>
+            <div className="settings__segmented">
+              {(["short", "balanced", "long"] as const).map((option) => (
+                <button
+                  key={option}
+                  className={`settings__segment${profile.response_length === option ? " settings__segment--active" : ""}`}
+                  onClick={() => option !== profile.response_length && handleCommunicationPreferencesUpdate(profile.communication_formality, option)}
+                  disabled={prefsBusy}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+            {prefsError && <p className="settings__error">{prefsError}</p>}
+          </div>
+        )}
         {profile && (
           <div className="settings__field">
             <span className="settings__field-label">Speak replies aloud</span>

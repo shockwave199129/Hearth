@@ -15,35 +15,27 @@ from datetime import datetime, timezone
 import numpy as np
 from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from langchain.agents import create_agent
-from langchain.agents.middleware import (
-    ModelCallLimitMiddleware,
-    ModelRetryMiddleware,
-    PIIMiddleware,
-    SummarizationMiddleware,
-)
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
+from app.cognitive import CognitiveScheduler, PromptBuilder, ResponseComposer, StateManager
+from app.execution.llm_adapter import LlmAdapter
+from app.intervention.engine import InterventionEngine
+from app.workers import NlpWorkerRunner
 from app.checkin.state import delete_checkin, get_last_checkin
-from app.checkin.tools import make_tools as make_checkin_tools
 from app.config import (
     APP_HOST,
     APP_PORT,
     CHECKIN_PROMPT_TEMPLATE,
-    MEMORY_SYSTEM_PROMPT_ADDITION,
     SAFETY_RESPONSE_TEXT,
-    SKILLS_SYSTEM_PROMPT_ADDITION,
-    SYSTEM_PROMPT_TEMPLATE,
+    DATA_DIR,
 )
 from app.eval.self_check import flag_reply
 from app.hardware.detect import detect_hardware
 from app.hardware.tier_manager import detect_and_cache_tier
 from app.llm.server_manager import LlmServer
 from app.memory import chat_history, long_term
+from app.memory.formation import process_session_memory
 from app.memory.short_term import ShortTermMemory
-from app.memory.tools import make_tools as make_memory_tools
 from app.onboarding.active_profile import clear_active_user_id, get_active_user_id, set_active_user_id
 from app.onboarding.profile_schema import OnboardingRequest, UserProfile
 from app.onboarding.profile_store import (
@@ -51,27 +43,29 @@ from app.onboarding.profile_store import (
     delete_profile,
     get_profile,
     list_profiles,
+    update_communication_preferences,
+    update_relationship_state,
     update_speak_replies,
 )
 from app.safety import crisis_detector, escalation
 from app.setup import orchestrator
 from app.setup.installer import InstallProgress
+from app.relationship.engine import update_relationship
+from app.relationship.engine import RelationshipState
+from app.safety2.worker import SafetyWorker
+from app.safety2.audit import purge_expired
+from app.learning.observation_store import ObservationStore
+from app.learning.recompute import recompute_all
+from app.evaluation.worker import EvaluationWorker
 from app.skills.loader import get_skill, load_catalog
-from app.skills.tools import SKILL_TOOLS
 from app.stt.moonshine_engine import MoonshineEngine
 from app.tts.tts_engines import get_tts_engine
 
 logger = logging.getLogger("hearth")
 
-_ROLE_TO_LC_MESSAGE = {"system": SystemMessage, "user": HumanMessage, "assistant": AIMessage}
-
 # Appended to the system prompt for exactly one regeneration attempt when
 # eval/self_check.py flags a reply — see project-plan.md §7.
 _SELF_CHECK_NUDGE = "\n\nKeep it to 2-3 short spoken sentences, no lists, no clinical or diagnostic language."
-
-
-def _to_lc_message(message: dict):
-    return _ROLE_TO_LC_MESSAGE[message["role"]](content=message["content"])
 
 
 def _profile_context_addition(profile: UserProfile) -> str:
@@ -155,59 +149,48 @@ class Pipeline:
 
         self.llm = LlmServer(self.tier)
         self.llm.start()
-
-        # ChatOpenAI just talks to the same llama-server /v1/chat/completions
-        # endpoint the hand-rolled client used before — see project-plan.md §5
-        # and the create_agent migration notes.
-        self.chat_model = ChatOpenAI(model="local", base_url=f"{self.llm.base_url}/v1", api_key="not-needed")
+        self.llm_adapter = LlmAdapter(self.llm)
 
         self.stt = MoonshineEngine(self.tier.stt_model)
         self.tts = get_tts_engine(self.tier)
+        self.scheduler = CognitiveScheduler()
+        self.prompt_builder = PromptBuilder()
+        self.response_composer = ResponseComposer()
+        self.nlp_workers = NlpWorkerRunner()
+        self.intervention_engine = InterventionEngine()
+        self.safety_worker = SafetyWorker()
+        self.learning_store = ObservationStore()
+        self.evaluation_worker = EvaluationWorker(self.learning_store)
+        self.state_manager = StateManager(
+            snapshot_path=DATA_DIR / "runtime_snapshot.json",
+            hearth_version="phase0",
+            model_version=self.tier.llm_gguf,
+        )
+        self.last_snapshot = self.state_manager.load_snapshot()
+        self.mind_state = self.last_snapshot.mind_state if self.last_snapshot else self.state_manager.create_mind_state()
 
         active_user_id = get_active_user_id()
         initial_profile = get_profile(active_user_id) if active_user_id else None
         self.set_profile(initial_profile or DEFAULT_PROFILE)
 
-    def _build_tools(self, user_id: str) -> list:
-        """Tools are bound to one profile via closure (make_tools) rather
-        than taking user_id as an LLM-fillable argument — the model must
-        never be able to name an arbitrary profile. Rebuilt on every
-        set_profile call, i.e. whenever the active profile changes."""
-        return make_memory_tools(user_id) + SKILL_TOOLS + make_checkin_tools(user_id)
-
     def set_profile(self, profile: UserProfile) -> None:
         self.profile = profile
-        self.system_prompt = (
-            SYSTEM_PROMPT_TEMPLATE.format(companion_name=profile.companion_name, name=profile.name)
-            + _profile_context_addition(profile)
-            + MEMORY_SYSTEM_PROMPT_ADDITION
-            + SKILLS_SYSTEM_PROMPT_ADDITION
-        )
-        self.agent = create_agent(
-            model=self.chat_model,
-            tools=self._build_tools(profile.user_id),
-            middleware=[
-                # Replaces the old hand-rolled max_iterations bound (was 4 for
-                # live turns, 6 for maintenance) with one shared, slightly
-                # more generous cap.
-                ModelCallLimitMiddleware(run_limit=15),
-                # Resilience against transient local llama-server hiccups.
-                ModelRetryMiddleware(max_retries=2),
-                # Defensive redaction in case a reply echoes something like
-                # an emergency contact's email/URL.
-                PIIMiddleware("email", strategy="redact", apply_to_output=True),
-                PIIMiddleware("url", strategy="redact", apply_to_output=True),
-                # Safety net, not the primary mechanism — ShortTermMemory's own
-                # rolling window (project-plan.md §4) already keeps normal
-                # per-turn message lists small. This guards the one case that
-                # can still balloon a single invoke: run_maintenance's one-shot
-                # full-session dump as a single user message.
-                SummarizationMiddleware(model=self.chat_model, trigger=("messages", 40), keep=("messages", 20)),
-            ],
-        )
+        if self.last_snapshot and self.last_snapshot.profile.user_id == profile.user_id:
+            self.mind_state = self.last_snapshot.mind_state
+        else:
+            self.mind_state = self.state_manager.create_mind_state()
 
     def new_session_memory(self) -> ShortTermMemory:
-        return ShortTermMemory(self.llm)
+        memory = ShortTermMemory(self.llm)
+        if self.last_snapshot is not None and self.last_snapshot.profile.user_id == self.profile.user_id:
+            conversation_state = self.last_snapshot.conversation_state
+            memory.restore(
+                messages=conversation_state.get("messages", []),
+                session_summary=conversation_state.get("session_summary", ""),
+                session_id=conversation_state.get("session_id"),
+                next_turn_id=conversation_state.get("next_turn_id"),
+            )
+        return memory
 
     def respond(self, audio: np.ndarray, memory: ShortTermMemory) -> tuple[str, str, np.ndarray | None, int, int]:
         """Voice input: transcribe, then everything else is shared with
@@ -242,19 +225,118 @@ class Pipeline:
     ) -> int:
         turn_id = memory.add_turn(transcript, reply_text)
         chat_history.record_turn(self.profile.user_id, memory.session_id, turn_id, "user", transcript)
-        return chat_history.record_turn(
+        turn_db_id = chat_history.record_turn(
             self.profile.user_id, memory.session_id, turn_id, "assistant", reply_text
+        )
+        self._save_runtime_snapshot(memory)
+        return turn_db_id
+
+    def _append_learning_observations(self, transcript: str, reply_text: str, intervention) -> None:
+        lower = transcript.lower()
+        reply_lower = reply_text.lower()
+        self.learning_store.append(
+            "communication",
+            "likes_reflection",
+            1.0 if any(token in reply_lower for token in ("i hear you", "that makes sense", "sounds", "it seems")) else 0.2,
+            {"transcript": transcript, "reply": reply_text},
+            "growth_engine",
+        )
+        self.learning_store.append(
+            "communication",
+            "prefers_questions",
+            1.0 if "?" in reply_text else 0.0,
+            {"reply": reply_text},
+            "growth_engine",
+        )
+        self.learning_store.append(
+            "communication",
+            "likes_direct_advice",
+            1.0 if any(token in reply_lower for token in ("you could", "try", "consider")) else 0.0,
+            {"reply": reply_text},
+            "growth_engine",
+        )
+        if intervention and getattr(intervention, "primary_skill", None) is not None:
+            skill_id = intervention.primary_skill.skill.id
+            self.learning_store.append(
+                "skill",
+                skill_id,
+                1.0 if any(token in reply_lower for token in ("help", "try", "let's")) else 0.5,
+                {"strategy": intervention.strategy, "reply": reply_text},
+                "intervention_engine",
+            )
+        self.learning_store.append(
+            "relationship",
+            "general_trust",
+            1.0 if any(token in reply_lower for token in ("i'm here", "i hear you", "glad you told me")) else 0.3,
+            {"reply": reply_text},
+            "growth_engine",
+        )
+        self.learning_store.append(
+            "relationship",
+            "vulnerability_trust",
+            1.0 if any(token in lower for token in ("i feel", "i'm scared", "i need to tell you", "i'm overwhelmed")) else 0.2,
+            {"transcript": transcript},
+            "growth_engine",
+        )
+        self.learning_store.append(
+            "relationship",
+            "attachment_signal",
+            1.0 if any(token in lower for token in ("you are all i have", "don't leave me", "need you all the time")) else 0.0,
+            {"transcript": transcript},
+            "growth_engine",
+        )
+
+    def _build_memory_context(self, transcript: str) -> str:
+        retrieved = long_term.search(transcript, self.profile.user_id, k=4)
+        if not retrieved:
+            return ""
+        lines = [f"- {item['category']}: {item['text']}" for item in retrieved[:3]]
+        return "Relevant memories:\n" + "\n".join(lines)
+
+    def _save_runtime_snapshot(self, memory: ShortTermMemory) -> None:
+        conversation_state = {
+            "session_id": memory.session_id,
+            "messages": memory.messages,
+            "session_summary": memory.session_summary,
+            "next_turn_id": memory._next_turn_id,
+        }
+        self.last_snapshot = self.state_manager.save_snapshot(
+            profile=self.profile,
+            mind_state=self.mind_state,
+            conversation_state=conversation_state,
+            last_prompt_plan=getattr(self, "_last_prompt_plan", None),
+            runtime_metrics={"turn_count": self.mind_state.turn_count},
         )
 
     def _handle_turn(self, transcript: str, memory: ShortTermMemory) -> tuple[str, str, np.ndarray | None, int, int]:
-        crisis_match = crisis_detector.detect(transcript)
-        if crisis_match is not None:
-            # Crisis audio always plays, regardless of speak_replies — see
-            # UserProfile.speak_replies's docstring.
-            return self._respond_to_crisis(transcript, crisis_match, memory)
+        purge_expired()
+        safety = self.safety_worker.assess(
+            self.profile.user_id,
+            transcript,
+            self.profile,
+            relationship=self._relationship_state(),
+        )
+        if safety.route != "ordinary":
+            return self._respond_to_safety(transcript, safety, memory)
 
-        messages = self._build_messages(memory, transcript)
-        reply_text = self._run_agent_with_self_check(messages)
+        task = self.scheduler.schedule(transcript, self.mind_state, session_summary=memory.session_summary)
+        self.nlp_workers.run(task.workers, transcript, self.mind_state)
+        memory_context = self._build_memory_context(transcript)
+        prompt_context = "\n\n".join(filter(None, [self._build_prompt_context(transcript, memory), memory_context]))
+        intervention = self.intervention_engine.plan(
+            transcript, self.profile, self.mind_state.stage, crisis=False
+        )
+        prompt, prompt_plan = self.prompt_builder.build(
+            self.profile, self.mind_state, transcript, prompt_context, intervention
+        )
+        self._last_prompt_plan = prompt_plan
+        reply_text = self._generate_reply(prompt, task.budget.max_response_tokens)
+        reply_text = self._apply_self_check(prompt, reply_text)
+        reply_result = self.response_composer.compose(reply_text)
+        reply_text = reply_result.text
+        self.mind_state.last_assistant_message = reply_text
+        self._update_relationship_snapshot(transcript, reply_text)
+        self._append_learning_observations(transcript, reply_text, intervention)
         if not self.profile.speak_replies:
             turn_db_id = self._commit_turn(memory, transcript, reply_text)
             return transcript, reply_text, None, 0, turn_db_id
@@ -264,20 +346,45 @@ class Pipeline:
         turn_db_id = self._commit_turn(memory, transcript, reply_text)
         return transcript, reply_text, reply_audio, sample_rate, turn_db_id
 
-    def _respond_to_crisis(
-        self, transcript: str, crisis_match: crisis_detector.CrisisMatch, memory: ShortTermMemory
+    def _relationship_state(self):
+        return RelationshipState(
+            general_trust=self.profile.relationship_general_trust,
+            vulnerability_trust=self.profile.relationship_vulnerability_trust,
+            advice_trust=self.profile.relationship_advice_trust,
+            consistency_confidence=self.profile.relationship_consistency_confidence,
+            boundaries=self.profile.relationship_boundaries,
+            life_model=self.profile.relationship_life_model,
+        )
+
+    def _respond_to_safety(
+        self, transcript: str, safety, memory: ShortTermMemory
     ) -> tuple[str, str, np.ndarray | None, int, int]:
-        """On a crisis-detector match: skip the LLM in favor of the fixed
-        SAFETY_RESPONSE_TEXT (project-plan.md §9). Speak it via the live TTS
-        engine so the words match the text."""
-        crisis_detector.record_event(crisis_match, self.profile.user_id)
-        try:
-            escalation.maybe_escalate(self.profile.user_id, reason=crisis_match.severity)
-        except Exception:
-            logger.exception("escalation check failed — safety response still proceeds")
-        reply_audio, sample_rate = self._synthesize_required(SAFETY_RESPONSE_TEXT)
-        turn_db_id = self._commit_turn(memory, transcript, SAFETY_RESPONSE_TEXT)
-        return transcript, SAFETY_RESPONSE_TEXT, reply_audio, sample_rate, turn_db_id
+        """Phase 4 safety response: bypass ordinary intervention scoring."""
+        if safety.category == "acute_self_risk":
+            crisis = crisis_detector.detect(transcript)
+            if crisis is not None:
+                crisis_detector.record_event(crisis, self.profile.user_id)
+            try:
+                escalation.maybe_escalate(self.profile.user_id, reason="acute_self_risk")
+            except Exception:
+                logger.exception("escalation check failed — safety response still proceeds")
+            reply_text = SAFETY_RESPONSE_TEXT
+        elif safety.category == "acute_distress":
+            reply_text = "I'm here with you. Let's slow this down and focus on the next few minutes together."
+        elif safety.category == "dependency_attachment":
+            reply_text = "I'm glad you told me. Let's keep this gentle and focus on support that helps you stay connected to the people around you."
+        elif safety.category == "disclosed_harm_to_others":
+            reply_text = "I'm glad you said that out loud. Let's slow down and keep the next steps calm and focused on immediate safety."
+        elif safety.category == "out_of_scope_clinical":
+            reply_text = "I can stay with you, but I can't diagnose or give clinical treatment advice. If you'd like, I can help you think through who would be the right person to ask."
+        else:
+            reply_text = SAFETY_RESPONSE_TEXT
+
+        self.safety_worker.log(self.profile.user_id, safety, response_taken=safety.response_key)
+        self._update_relationship_snapshot(transcript, reply_text)
+        reply_audio, sample_rate = self._synthesize_required(reply_text)
+        turn_db_id = self._commit_turn(memory, transcript, reply_text)
+        return transcript, reply_text, reply_audio, sample_rate, turn_db_id
 
     def _checkin_prompt_line(self) -> str:
         """Computed fresh each turn (single cheap row read) rather than
@@ -292,66 +399,93 @@ class Pipeline:
             checkin_status = f"It has been {days} day{'s' if days != 1 else ''} since you last asked how they're feeling."
         return CHECKIN_PROMPT_TEMPLATE.format(date=now.date().isoformat(), checkin_status=checkin_status)
 
-    def _build_messages(self, memory: ShortTermMemory, transcript: str) -> list[dict]:
-        system_content = self.system_prompt + self._checkin_prompt_line()
-        if memory.session_summary:
-            system_content += f"\n\nEarlier in this session: {memory.session_summary}"
-        messages = [{"role": "system", "content": system_content}]
-        messages.extend(memory.as_api_messages())
-        messages.append({"role": "user", "content": transcript})
-        return messages
+    def _build_prompt_context(self, transcript: str, memory: ShortTermMemory) -> str:
+        return "\n".join(
+            filter(
+                None,
+                [
+                    self._checkin_prompt_line(),
+                    f"Earlier in this session: {memory.session_summary}" if memory.session_summary else "",
+                    transcript,
+                ],
+            )
+        )
 
-    def _run_agent(self, messages: list[dict]) -> str:
-        """Lets the model call memory/skill/check-in tools before answering —
-        see project-plan.md §5, §6, §8. The tool-calling loop, iteration
-        bound (ModelCallLimitMiddleware), and retry/summarization/PII
-        handling all live in the create_agent graph built in set_profile."""
-        lc_messages = [_to_lc_message(m) for m in messages]
+    def _generate_reply(self, prompt: str, max_tokens: int) -> str:
         try:
-            result = self.agent.invoke({"messages": lc_messages})
+            return self.llm_adapter.complete(prompt, max_tokens=max_tokens).strip()
         except Exception:
-            logger.exception("agent invocation did not converge or failed")
-            return "I'm here with you — say that again?"
-        return (result["messages"][-1].content or "").strip()
+            logger.exception("llm completion failed")
+            return "I’m here with you. Say that again?"
 
-    def _run_agent_with_self_check(self, messages: list[dict]) -> str:
-        """Runtime pre-TTS self-check (project-plan.md §7) — a fast
-        heuristic, not a second LLM call. Regenerates exactly once if
-        flagged, then uses whatever comes back regardless, so this never
-        blocks the conversation."""
-        reply_text = self._run_agent(messages)
+    def _apply_self_check(self, prompt: str, reply_text: str) -> str:
+        """Runtime pre-TTS self-check — a fast heuristic, not a second LLM call."""
         reason = flag_reply(reply_text)
         if reason is None:
             return reply_text
         logger.info("self-check flagged reply (%s) — regenerating once", reason)
-        nudged = [dict(m) for m in messages]
-        nudged[0] = {**nudged[0], "content": nudged[0]["content"] + _SELF_CHECK_NUDGE}
-        return self._run_agent(nudged)
+        return self._generate_reply(prompt + _SELF_CHECK_NUDGE, 220)
 
     def run_maintenance(self, memory: ShortTermMemory) -> None:
-        """End-of-session silent pass: lets the model create/update/delete
-        memories based on the whole session, without it being a
-        conversational event. Best-effort — a failure here should never
-        take down session teardown."""
         if not memory.messages and not memory.session_summary:
             return
-        transcript_lines = [f"{m['role']}: {m['content']}" for m in memory.messages]
-        convo = "\n".join(filter(None, [memory.session_summary, *transcript_lines]))
-        messages = [
-            {"role": "system", "content": MEMORY_SYSTEM_PROMPT_ADDITION},
-            {
-                "role": "user",
-                "content": (
-                    "Review what you know about this person against this session — "
-                    "create, update, or delete memories as needed. This is a silent "
-                    f"background pass, not a reply to the user.\n\nSession:\n{convo}"
-                ),
-            },
-        ]
         try:
-            self._run_agent(messages)
+            result = process_session_memory(self.profile.user_id, memory)
+            rel = update_relationship(self.profile, memory.session_summary or "", memory.messages[-1]["content"] if memory.messages else "", result.created + result.updated)
+            update_relationship_state(
+                self.profile.user_id,
+                relationship_general_trust=rel.general_trust,
+                relationship_vulnerability_trust=rel.vulnerability_trust,
+                relationship_advice_trust=rel.advice_trust,
+                relationship_consistency_confidence=rel.consistency_confidence,
+                relationship_boundaries=rel.boundaries,
+                relationship_life_model=rel.life_model,
+            )
+            self.profile = get_profile(self.profile.user_id) or self.profile
+            self.mind_state.current_topic = None
+            recomputed = recompute_all(self.profile.user_id, self.learning_store)
+            self.profile.communication_traits = recomputed.communication_traits
+            self.profile.skill_affinity = recomputed.skill_affinity
+            self.profile.relationship_general_trust = recomputed.trust["general_trust"]
+            self.profile.relationship_vulnerability_trust = recomputed.trust["vulnerability_trust"]
+            self.profile.relationship_advice_trust = recomputed.trust["advice_trust"]
+            self.profile.relationship_consistency_confidence = recomputed.trust["consistency_confidence"]
+            update_relationship_state(
+                self.profile.user_id,
+                relationship_general_trust=recomputed.trust["general_trust"],
+                relationship_vulnerability_trust=recomputed.trust["vulnerability_trust"],
+                relationship_advice_trust=recomputed.trust["advice_trust"],
+                relationship_consistency_confidence=recomputed.trust["consistency_confidence"],
+                relationship_boundaries=self.profile.relationship_boundaries,
+                relationship_life_model=self.profile.relationship_life_model,
+            )
         except Exception:
-            logger.exception("end-of-session memory maintenance failed")
+            logger.exception("phase 2 maintenance failed")
+        try:
+            self.evaluation_worker.evaluate(self.profile.user_id, memory.session_summary or "", memory.messages[-1]["content"] if memory.messages else "", safety_findings=None)
+        except Exception:
+            logger.exception("evaluation worker failed")
+
+    def _update_relationship_snapshot(self, transcript: str, reply_text: str) -> None:
+        rel = update_relationship(self.profile, transcript, reply_text)
+        self.profile.relationship_general_trust = rel.general_trust
+        self.profile.relationship_vulnerability_trust = rel.vulnerability_trust
+        self.profile.relationship_advice_trust = rel.advice_trust
+        self.profile.relationship_consistency_confidence = rel.consistency_confidence
+        self.profile.relationship_boundaries = rel.boundaries
+        self.profile.relationship_life_model = rel.life_model
+        try:
+            update_relationship_state(
+                self.profile.user_id,
+                relationship_general_trust=rel.general_trust,
+                relationship_vulnerability_trust=rel.vulnerability_trust,
+                relationship_advice_trust=rel.advice_trust,
+                relationship_consistency_confidence=rel.consistency_confidence,
+                relationship_boundaries=rel.boundaries,
+                relationship_life_model=rel.life_model,
+            )
+        except Exception:
+            logger.exception("failed to persist relationship snapshot")
 
     def shutdown(self) -> None:
         self.llm.stop()
@@ -491,6 +625,8 @@ def api_get_profile() -> UserProfile:
 
 class ProfileSettingsUpdate(BaseModel):
     speak_replies: bool
+    communication_formality: str | None = None
+    response_length: str | None = None
 
 
 @app.put("/api/profile")
@@ -502,11 +638,16 @@ def api_update_profile(payload: ProfileSettingsUpdate) -> UserProfile:
     if profile is None:
         raise HTTPException(status_code=404, detail="no profile saved yet")
     update_speak_replies(user_id, payload.speak_replies)
+    if payload.communication_formality is not None and payload.response_length is not None:
+        update_communication_preferences(
+            user_id,
+            communication_formality=payload.communication_formality,
+            response_length=payload.response_length,
+        )
     updated = get_profile(user_id)
     _require_pipeline()
-    # A plain attribute swap, not set_profile() — speak_replies doesn't
-    # affect the system prompt or the agent's tools, so there's no need to
-    # rebuild the create_agent graph just to flip this.
+    # A plain attribute swap, not set_profile() — these preferences only
+    # affect prompt shaping, not the runtime tier or profile identity.
     _pipeline.profile = updated
     return updated
 

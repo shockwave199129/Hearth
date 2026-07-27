@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hearth_ai/annotation/relationship",
+  "title": "Hearth Relationship annotation",
+  "description": "Per-turn soft relationship signals for RelationshipHead (SmoothL1). Durable trust writes stay Growth-Engine-owned.",
+  "type": "object",
+  "required": ["text", "signals"],
+  "properties": {
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signals": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "description": "Ordered: trust_delta, vulnerability, openness, comfort",
+      "items": { "type": "number" },
+      "prefixItems": [
+        {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "trust_delta"
+        },
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "vulnerability"
+        },
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "openness"
+        },
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "comfort"
+        }
+      ]
+    },
+    "annotator": { "type": "string" },
+    "notes": { "type": "string" }
+  },
+  "additionalProperties": false
+}

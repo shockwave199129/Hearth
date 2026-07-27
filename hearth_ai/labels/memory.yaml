@@ -1,0 +1,35 @@
+# Hearth MemoryHead — composite outputs (see MemoryLoss)
+# store: BCE, type: CE, importance: BCE on 0-1 target
+task: memory
+loss: memory_combined
+num_types: 8
+
+store:
+  description: Whether to persist this turn as long-term memory
+  type: binary
+  labels:
+    - do_not_store
+    - store
+
+types:
+  - episodic
+  - semantic
+  - emotional
+  - preference
+  - goal
+  - boundary
+  - person
+  - other
+
+importance:
+  description: Scalar importance in [0, 1]
+  type: float
+  min: 0.0
+  max: 1.0
+
+# JSONL label shape expected by MemoryLoss / MemoryHead
+# {"text": "...", "store": 0|1, "type": "<types item or index>", "importance": 0.0-1.0}
+jsonl_fields:
+  - store
+  - type
+  - importance

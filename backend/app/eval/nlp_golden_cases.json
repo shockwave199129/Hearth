@@ -1,0 +1,667 @@
+{
+  "version": 1,
+  "description": "Golden NLP regression cases. Snapshots lock smoke-model behavior; constraints check vocab.",
+  "latency_budget_ms_per_head_p95": 25.0,
+  "cases": [
+    {
+      "id": "ambiguous-distress",
+      "text": "I don't know, everything's just been kind of a lot lately, I guess.",
+      "source": "ambiguous_distress.json",
+      "constraints": {
+        "emotion_in": [
+          "joy",
+          "sadness",
+          "anger",
+          "fear",
+          "anxiety",
+          "disgust",
+          "surprise",
+          "gratitude",
+          "loneliness",
+          "guilt",
+          "pride",
+          "hope",
+          "neutral",
+          "unknown"
+        ],
+        "intent_in": [
+          "vent",
+          "validate",
+          "comfort",
+          "celebrate",
+          "advise",
+          "inquire",
+          "plan",
+          "small_talk",
+          "meta",
+          "unknown"
+        ],
+        "strategy_in": [
+          "listen",
+          "validate",
+          "reflect",
+          "comfort",
+          "encourage",
+          "celebrate",
+          "advise",
+          "ask_question",
+          "plan",
+          "ground",
+          "boundary",
+          "defer_safety"
+        ],
+        "memory_type_in": [
+          "episodic",
+          "semantic",
+          "emotional",
+          "preference",
+          "goal",
+          "boundary",
+          "person",
+          "other"
+        ]
+      },
+      "snapshot": {
+        "emotion": "unknown",
+        "intent": "inquire",
+        "strategy": "comfort",
+        "memory_store": true,
+        "memory_type": "goal"
+      }
+    },
+    {
+      "id": "boundary-setting-skill-use",
+      "text": "My coworker keeps dumping extra work on me and I always just say yes, and then I'm resentful about it later.",
+      "source": "boundary_setting.json",
+      "constraints": {
+        "emotion_in": [
+          "joy",
+          "sadness",
+          "anger",
+          "fear",
+          "anxiety",
+          "disgust",
+          "surprise",
+          "gratitude",
+          "loneliness",
+          "guilt",
+          "pride",
+          "hope",
+          "neutral",
+          "unknown"
+        ],
+        "intent_in": [
+          "vent",
+          "validate",
+          "comfort",
+          "celebrate",
+          "advise",
+          "inquire",
+          "plan",
+          "small_talk",
+          "meta",
+          "unknown"
+        ],
+        "strategy_in": [
+          "listen",
+          "validate",
+          "reflect",
+          "comfort",
+          "encourage",
+          "celebrate",
+          "advise",
+          "ask_question",
+          "plan",
+          "ground",
+          "boundary",
+          "defer_safety"
+        ],
+        "memory_type_in": [
+          "episodic",
+          "semantic",
+          "emotional",
+          "preference",
+          "goal",
+          "boundary",
+          "person",
+          "other"
+        ]
+      },
+      "snapshot": {
+        "emotion": "unknown",
+        "intent": "inquire",
+        "strategy": "comfort",
+        "memory_store": true,
+        "memory_type": "person"
+      }
+    },
+    {
+      "id": "crisis-trigger",
+      "text": "I don't see the point anymore, I've been thinking it would be easier if I just wasn't here.",
+      "source": "crisis_trigger.json",
+      "constraints": {
+        "emotion_in": [
+          "joy",
+          "sadness",
+          "anger",
+          "fear",
+          "anxiety",
+          "disgust",
+          "surprise",
+          "gratitude",
+          "loneliness",
+          "guilt",
+          "pride",
+          "hope",
+          "neutral",
+          "unknown"
+        ],
+        "intent_in": [
+          "vent",
+          "validate",
+          "comfort",
+          "celebrate",
+          "advise",
+          "inquire",
+          "plan",
+          "small_talk",
+          "meta",
+          "unknown"
+        ],
+        "strategy_in": [
+          "listen",
+          "validate",
+          "reflect",
+          "comfort",
+          "encourage",
+          "celebrate",
+          "advise",
+          "ask_question",
+          "plan",
+          "ground",
+          "boundary",
+          "defer_safety"
+        ],
+        "memory_type_in": [
+          "episodic",
+          "semantic",
+          "emotional",
+          "preference",
+          "goal",
+          "boundary",
+          "person",
+          "other"
+        ]
+      },
+      "snapshot": {
+        "emotion": "unknown",
+        "intent": "vent",
+        "strategy": "celebrate",
+        "memory_store": true,
+        "memory_type": "emotional"
+      }
+    },
+    {
+      "id": "low-energy-venting",
+      "text": "I'm just so tired of work lately, nothing I do there feels like it matters anymore.",
+      "source": "low_energy_venting.json",
+      "constraints": {
+        "emotion_in": [
+          "joy",
+          "sadness",
+          "anger",
+          "fear",
+          "anxiety",
+          "disgust",
+          "surprise",
+          "gratitude",
+          "loneliness",
+          "guilt",
+          "pride",
+          "hope",
+          "neutral",
+          "unknown"
+        ],
+        "intent_in": [
+          "vent",
+          "validate",
+          "comfort",
+          "celebrate",
+          "advise",
+          "inquire",
+          "plan",
+          "small_talk",
+          "meta",
+          "unknown"
+        ],
+        "strategy_in": [
+          "listen",
+          "validate",
+          "reflect",
+          "comfort",
+          "encourage",
+          "celebrate",
+          "advise",
+          "ask_question",
+          "plan",
+          "ground",
+          "boundary",
+          "defer_safety"
+        ],
+        "memory_type_in": [
+          "episodic",
+          "semantic",
+          "emotional",
+          "preference",
+          "goal",
+          "boundary",
+          "person",
+          "other"
+        ]
+      },
+      "snapshot": {
+        "emotion": "unknown",
+        "intent": "inquire",
+        "strategy": "listen",
+        "memory_store": true,
+        "memory_type": "goal"
+      }
+    },
+    {
+      "id": "ordinary-chat",
+      "text": "Just got back from a walk, the weather was actually really nice today.",
+      "source": "ordinary_chat.json",
+      "constraints": {
+        "emotion_in": [
+          "joy",
+          "sadness",
+          "anger",
+          "fear",
+          "anxiety",
+          "disgust",
+          "surprise",
+          "gratitude",
+          "loneliness",
+          "guilt",
+          "pride",
+          "hope",
+          "neutral",
+          "unknown"
+        ],
+        "intent_in": [
+          "vent",
+          "validate",
+          "comfort",
+          "celebrate",
+          "advise",
+          "inquire",
+          "plan",
+          "small_talk",
+          "meta",
+          "unknown"
+        ],
+        "strategy_in": [
+          "listen",
+          "validate",
+          "reflect",
+          "comfort",
+          "encourage",
+          "celebrate",
+          "advise",
+          "ask_question",
+          "plan",
+          "ground",
+          "boundary",
+          "defer_safety"
+        ],
+        "memory_type_in": [
+          "episodic",
+          "semantic",
+          "emotional",
+          "preference",
+          "goal",
+          "boundary",
+          "person",
+          "other"
+        ]
+      },
+      "snapshot": {
+        "emotion": "unknown",
+        "intent": "meta",
+        "strategy": "listen",
+        "memory_store": false,
+        "memory_type": null
+      }
+    },
+    {
+      "id": "explicit-vent",
+      "text": "Can you just listen while I vent about my boss?",
+      "source": "extra",
+      "constraints": {
+        "emotion_in": [
+          "joy",
+          "sadness",
+          "anger",
+          "fear",
+          "anxiety",
+          "disgust",
+          "surprise",
+          "gratitude",
+          "loneliness",
+          "guilt",
+          "pride",
+          "hope",
+          "neutral",
+          "unknown"
+        ],
+        "intent_in": [
+          "vent",
+          "validate",
+          "comfort",
+          "celebrate",
+          "advise",
+          "inquire",
+          "plan",
+          "small_talk",
+          "meta",
+          "unknown"
+        ],
+        "strategy_in": [
+          "listen",
+          "validate",
+          "reflect",
+          "comfort",
+          "encourage",
+          "celebrate",
+          "advise",
+          "ask_question",
+          "plan",
+          "ground",
+          "boundary",
+          "defer_safety"
+        ],
+        "memory_type_in": [
+          "episodic",
+          "semantic",
+          "emotional",
+          "preference",
+          "goal",
+          "boundary",
+          "person",
+          "other"
+        ]
+      },
+      "snapshot": {
+        "emotion": "unknown",
+        "intent": "inquire",
+        "strategy": "listen",
+        "memory_store": false,
+        "memory_type": null
+      }
+    },
+    {
+      "id": "memory-fact",
+      "text": "Please remember that my sister's name is Maya and she lives in Portland.",
+      "source": "extra",
+      "constraints": {
+        "emotion_in": [
+          "joy",
+          "sadness",
+          "anger",
+          "fear",
+          "anxiety",
+          "disgust",
+          "surprise",
+          "gratitude",
+          "loneliness",
+          "guilt",
+          "pride",
+          "hope",
+          "neutral",
+          "unknown"
+        ],
+        "intent_in": [
+          "vent",
+          "validate",
+          "comfort",
+          "celebrate",
+          "advise",
+          "inquire",
+          "plan",
+          "small_talk",
+          "meta",
+          "unknown"
+        ],
+        "strategy_in": [
+          "listen",
+          "validate",
+          "reflect",
+          "comfort",
+          "encourage",
+          "celebrate",
+          "advise",
+          "ask_question",
+          "plan",
+          "ground",
+          "boundary",
+          "defer_safety"
+        ],
+        "memory_type_in": [
+          "episodic",
+          "semantic",
+          "emotional",
+          "preference",
+          "goal",
+          "boundary",
+          "person",
+          "other"
+        ]
+      },
+      "snapshot": {
+        "emotion": "unknown",
+        "intent": "vent",
+        "strategy": "ground",
+        "memory_store": true,
+        "memory_type": "episodic"
+      }
+    },
+    {
+      "id": "trust-disclosure",
+      "text": "I trust you enough to tell you something I've never said out loud.",
+      "source": "extra",
+      "constraints": {
+        "emotion_in": [
+          "joy",
+          "sadness",
+          "anger",
+          "fear",
+          "anxiety",
+          "disgust",
+          "surprise",
+          "gratitude",
+          "loneliness",
+          "guilt",
+          "pride",
+          "hope",
+          "neutral",
+          "unknown"
+        ],
+        "intent_in": [
+          "vent",
+          "validate",
+          "comfort",
+          "celebrate",
+          "advise",
+          "inquire",
+          "plan",
+          "small_talk",
+          "meta",
+          "unknown"
+        ],
+        "strategy_in": [
+          "listen",
+          "validate",
+          "reflect",
+          "comfort",
+          "encourage",
+          "celebrate",
+          "advise",
+          "ask_question",
+          "plan",
+          "ground",
+          "boundary",
+          "defer_safety"
+        ],
+        "memory_type_in": [
+          "episodic",
+          "semantic",
+          "emotional",
+          "preference",
+          "goal",
+          "boundary",
+          "person",
+          "other"
+        ]
+      },
+      "snapshot": {
+        "emotion": "unknown",
+        "intent": "inquire",
+        "strategy": "ask_question",
+        "memory_store": true,
+        "memory_type": "goal"
+      }
+    },
+    {
+      "id": "plan-advice",
+      "text": "What should I do next to prepare for the interview tomorrow?",
+      "source": "extra",
+      "constraints": {
+        "emotion_in": [
+          "joy",
+          "sadness",
+          "anger",
+          "fear",
+          "anxiety",
+          "disgust",
+          "surprise",
+          "gratitude",
+          "loneliness",
+          "guilt",
+          "pride",
+          "hope",
+          "neutral",
+          "unknown"
+        ],
+        "intent_in": [
+          "vent",
+          "validate",
+          "comfort",
+          "celebrate",
+          "advise",
+          "inquire",
+          "plan",
+          "small_talk",
+          "meta",
+          "unknown"
+        ],
+        "strategy_in": [
+          "listen",
+          "validate",
+          "reflect",
+          "comfort",
+          "encourage",
+          "celebrate",
+          "advise",
+          "ask_question",
+          "plan",
+          "ground",
+          "boundary",
+          "defer_safety"
+        ],
+        "memory_type_in": [
+          "episodic",
+          "semantic",
+          "emotional",
+          "preference",
+          "goal",
+          "boundary",
+          "person",
+          "other"
+        ]
+      },
+      "snapshot": {
+        "emotion": "unknown",
+        "intent": "inquire",
+        "strategy": "ask_question",
+        "memory_store": true,
+        "memory_type": "episodic"
+      }
+    },
+    {
+      "id": "gratitude",
+      "text": "Thank you so much, that really helped \u2014 I feel grateful.",
+      "source": "extra",
+      "constraints": {
+        "emotion_in": [
+          "joy",
+          "sadness",
+          "anger",
+          "fear",
+          "anxiety",
+          "disgust",
+          "surprise",
+          "gratitude",
+          "loneliness",
+          "guilt",
+          "pride",
+          "hope",
+          "neutral",
+          "unknown"
+        ],
+        "intent_in": [
+          "vent",
+          "validate",
+          "comfort",
+          "celebrate",
+          "advise",
+          "inquire",
+          "plan",
+          "small_talk",
+          "meta",
+          "unknown"
+        ],
+        "strategy_in": [
+          "listen",
+          "validate",
+          "reflect",
+          "comfort",
+          "encourage",
+          "celebrate",
+          "advise",
+          "ask_question",
+          "plan",
+          "ground",
+          "boundary",
+          "defer_safety"
+        ],
+        "memory_type_in": [
+          "episodic",
+          "semantic",
+          "emotional",
+          "preference",
+          "goal",
+          "boundary",
+          "person",
+          "other"
+        ]
+      },
+      "snapshot": {
+        "emotion": "unknown",
+        "intent": "inquire",
+        "strategy": "celebrate",
+        "memory_store": true,
+        "memory_type": "episodic"
+      }
+    }
+  ]
+}

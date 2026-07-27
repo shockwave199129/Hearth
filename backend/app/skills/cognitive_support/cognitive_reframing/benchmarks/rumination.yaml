@@ -1,0 +1,4 @@
+input: "I keep thinking I'm going to fail everything."
+expected_strategy: reframe
+expect_skill: cognitive_reframing
+

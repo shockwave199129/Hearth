@@ -7,6 +7,9 @@ backend/models/**/*.gguf
 backend/models/**/*.onnx
 backend/models/**/*.bin
 
+# Exported hearth_ai ONNX (regenerate via hearth_ai/examples/export_onnx.py)
+models/nlp/**/*.onnx
+
 # PyInstaller build workdir — scripts/build_backend.sh/.ps1's --workpath.
 /.pyinstaller-build
 
@@ -26,3 +29,15 @@ node_modules/
 project-plan.md
 project-phases.md
 .claude/
+The Book/
+.cursor/
+.codex/
+
+# hearth_ai prepared HF JSONL (regenerate via data/prepare/)
+hearth_ai/data/emotion/
+hearth_ai/data/intent/
+hearth_ai/data/memory/
+hearth_ai/data/relationship/
+hearth_ai/data/strategy/
+!hearth_ai/data/intent_sample.jsonl
+hearth_ai/checkpoints/

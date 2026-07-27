@@ -17,6 +17,17 @@ CREATE TABLE IF NOT EXISTS profiles (
     stressors TEXT NOT NULL,        -- JSON-encoded list[str]
     preferred_voice TEXT NOT NULL,
     companion_name TEXT NOT NULL,
+    communication_formality TEXT NOT NULL DEFAULT 'casual',
+    response_length TEXT NOT NULL DEFAULT 'balanced',
+    relationship_general_trust REAL NOT NULL DEFAULT 0.0,
+    relationship_vulnerability_trust REAL NOT NULL DEFAULT 0.0,
+    relationship_advice_trust REAL NOT NULL DEFAULT 0.0,
+    relationship_consistency_confidence REAL NOT NULL DEFAULT 0.0,
+    relationship_boundaries TEXT NOT NULL DEFAULT 'normal',
+    relationship_life_model TEXT NOT NULL DEFAULT 'unknown',
+    communication_traits_json TEXT NOT NULL DEFAULT '{}',
+    skill_affinity_json TEXT NOT NULL DEFAULT '{}',
+    evaluation_last_run_at TEXT,
     emergency_contact_consent INTEGER NOT NULL DEFAULT 0,
     emergency_contact_name TEXT,
     emergency_contact_method TEXT,
@@ -106,6 +117,17 @@ CREATE TABLE IF NOT EXISTS profile (
     stressors TEXT NOT NULL,
     preferred_voice TEXT NOT NULL,
     companion_name TEXT NOT NULL,
+    communication_formality TEXT NOT NULL DEFAULT 'casual',
+    response_length TEXT NOT NULL DEFAULT 'balanced',
+    relationship_general_trust REAL NOT NULL DEFAULT 0.0,
+    relationship_vulnerability_trust REAL NOT NULL DEFAULT 0.0,
+    relationship_advice_trust REAL NOT NULL DEFAULT 0.0,
+    relationship_consistency_confidence REAL NOT NULL DEFAULT 0.0,
+    relationship_boundaries TEXT NOT NULL DEFAULT 'normal',
+    relationship_life_model TEXT NOT NULL DEFAULT 'unknown',
+    communication_traits_json TEXT NOT NULL DEFAULT '{}',
+    skill_affinity_json TEXT NOT NULL DEFAULT '{}',
+    evaluation_last_run_at TEXT,
     created_at TEXT NOT NULL
 );
 """
@@ -130,6 +152,17 @@ def _ensure_columns(conn, table: str, columns: dict[str, str]) -> None:
 # emergency-contact columns above.
 _PROFILES_TEXT_INPUT_COLUMNS = {
     "speak_replies": "INTEGER NOT NULL DEFAULT 1",
+    "communication_formality": "TEXT NOT NULL DEFAULT 'casual'",
+    "response_length": "TEXT NOT NULL DEFAULT 'balanced'",
+    "relationship_general_trust": "REAL NOT NULL DEFAULT 0.0",
+    "relationship_vulnerability_trust": "REAL NOT NULL DEFAULT 0.0",
+    "relationship_advice_trust": "REAL NOT NULL DEFAULT 0.0",
+    "relationship_consistency_confidence": "REAL NOT NULL DEFAULT 0.0",
+    "relationship_boundaries": "TEXT NOT NULL DEFAULT 'normal'",
+    "relationship_life_model": "TEXT NOT NULL DEFAULT 'unknown'",
+    "communication_traits_json": "TEXT NOT NULL DEFAULT '{}'",
+    "skill_affinity_json": "TEXT NOT NULL DEFAULT '{}'",
+    "evaluation_last_run_at": "TEXT",
 }
 
 
@@ -148,6 +181,9 @@ def _migrate_legacy_singleton_profile(conn) -> None:
     _ensure_columns(conn, "profile", _LEGACY_PROFILE_SAFETY_COLUMNS)
     old = conn.execute(
         """SELECT name, age_range, gender, profession, stressors, preferred_voice, companion_name,
+                  communication_formality, response_length, relationship_general_trust, relationship_vulnerability_trust,
+                  relationship_advice_trust, relationship_consistency_confidence, relationship_boundaries, relationship_life_model,
+                  communication_traits_json, skill_affinity_json, evaluation_last_run_at,
                   emergency_contact_consent, emergency_contact_name, emergency_contact_method,
                   emergency_contact_value, created_at
            FROM profile WHERE id = 1"""
@@ -157,9 +193,13 @@ def _migrate_legacy_singleton_profile(conn) -> None:
     user_id = str(uuid.uuid4())
     conn.execute(
         """INSERT INTO profiles (user_id, name, age_range, gender, profession, stressors,
-               preferred_voice, companion_name, speak_replies, emergency_contact_consent,
+               preferred_voice, companion_name, communication_formality, response_length,
+               relationship_general_trust, relationship_vulnerability_trust, relationship_advice_trust,
+               relationship_consistency_confidence, relationship_boundaries, relationship_life_model,
+               communication_traits_json, skill_affinity_json, evaluation_last_run_at,
+               speak_replies, emergency_contact_consent,
                emergency_contact_name, emergency_contact_method, emergency_contact_value, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)""",
         (user_id, *old),
     )
     conn.execute(

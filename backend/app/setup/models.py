@@ -23,6 +23,7 @@ from app.config import (
     TTS_PARLER_REPO,
 )
 from app.hardware.tier_manager import TierConfig
+from app.setup.nlp_models import ensure_nlp_models
 
 # LiquidAI/LFM2.5-1.2B-Instruct-GGUF — verified repo/filenames (July 2026).
 # Remote filenames differ slightly from the local names tier_manager.py
@@ -194,3 +195,5 @@ def download_models(tier: TierConfig, log: ProgressFn = print) -> None:
         ensure_parler_model(log)
     else:
         ensure_kokoro_model(log)
+    # Optional: hearth_ai emotion/intent/… ONNX package (fail-soft if absent).
+    ensure_nlp_models(log)

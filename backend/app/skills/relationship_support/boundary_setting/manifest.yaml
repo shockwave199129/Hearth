@@ -1,0 +1,13 @@
+name: Boundary Setting
+skill_id: boundary_setting
+version: 1.0.0
+description: Recognize when a boundary is needed and suggest direct language for setting one.
+tags: [boundaries, relationships, assertiveness]
+when_use: [resentment, overload, relationship strain, work stress]
+avoid: [acute crisis, immediate danger]
+conversation_depth: [medium, deep]
+values_implemented: [respect_autonomy, honesty_over_illusion]
+estimated_tokens: 170
+estimated_latency: 0
+category: relationship_support
+

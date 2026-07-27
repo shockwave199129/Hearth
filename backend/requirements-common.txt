@@ -22,6 +22,9 @@ sounddevice==0.5.*
 # onnx is required for onnxruntime.quantization submodule import
 onnx==1.22.*
 
+# hearth_ai NLP classifiers (app/nlp) — BPE tokenizer JSON + ORT sessions
+tokenizers>=0.20
+
 # Encryption at rest — OS-keychain key management + DB-level encryption.
 keyring==25.*
 cryptography>=43.0

@@ -14,6 +14,17 @@ class UserProfile(BaseModel):
     stressors: list[str] = Field(default_factory=list)
     preferred_voice: str = "female"    # "male" | "female"
     companion_name: str = "Companion"
+    communication_formality: str = "casual"    # "casual" | "neutral" | "formal"
+    response_length: str = "balanced"    # "short" | "balanced" | "long"
+    relationship_general_trust: float = 0.0
+    relationship_vulnerability_trust: float = 0.0
+    relationship_advice_trust: float = 0.0
+    relationship_consistency_confidence: float = 0.0
+    relationship_boundaries: str = "normal"
+    relationship_life_model: str = "unknown"
+    communication_traits: dict[str, float] = Field(default_factory=dict)
+    skill_affinity: dict[str, float] = Field(default_factory=dict)
+    evaluation_last_run_at: datetime | None = None
     # Whether replies get synthesized as audio at all — on by default; the
     # one exception is the crisis-response path (safety/escalation.py's
     # sibling, main.py's _respond_to_crisis), which always speaks regardless
@@ -41,6 +52,16 @@ class OnboardingRequest(BaseModel):
     stressors: list[str] = Field(default_factory=list)
     preferred_voice: str = "female"
     companion_name: str = "Companion"
+    communication_formality: str = "casual"
+    response_length: str = "balanced"
+    relationship_general_trust: float = 0.0
+    relationship_vulnerability_trust: float = 0.0
+    relationship_advice_trust: float = 0.0
+    relationship_consistency_confidence: float = 0.0
+    relationship_boundaries: str = "normal"
+    relationship_life_model: str = "unknown"
+    communication_traits: dict[str, float] = Field(default_factory=dict)
+    skill_affinity: dict[str, float] = Field(default_factory=dict)
     speak_replies: bool = True
     emergency_contact_consent: bool = False
     emergency_contact_name: str | None = None

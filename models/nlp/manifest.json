@@ -1,0 +1,56 @@
+{
+  "opset": 17,
+  "parity_atol": 0.0001,
+  "hearth_config": {
+    "vocab_size": 3955,
+    "max_seq_len": 64,
+    "hidden_size": 128,
+    "num_layers": 4,
+    "num_heads": 4,
+    "head_dim": 32,
+    "ffn_hidden_size": 256,
+    "dropout": 0.1,
+    "rope_theta": 10000.0,
+    "rms_norm_eps": 1e-06,
+    "pad_token_id": 0,
+    "target_encoder_params": 90000000
+  },
+  "artifacts": [
+    {
+      "name": "encoder",
+      "onnx": "encoder/model.onnx",
+      "max_abs_diff": 4.76837158203125e-07,
+      "passed": true
+    },
+    {
+      "name": "emotion",
+      "onnx": "emotion/model.onnx",
+      "max_abs_diff": 1.430511474609375e-06,
+      "passed": true
+    },
+    {
+      "name": "intent",
+      "onnx": "intent/model.onnx",
+      "max_abs_diff": 4.470348358154297e-07,
+      "passed": true
+    },
+    {
+      "name": "memory",
+      "onnx": "memory/model.onnx",
+      "max_abs_diff": 1.0728836059570312e-06,
+      "passed": true
+    },
+    {
+      "name": "relationship",
+      "onnx": "relationship/model.onnx",
+      "max_abs_diff": 1.7881393432617188e-07,
+      "passed": true
+    },
+    {
+      "name": "strategy",
+      "onnx": "strategy/model.onnx",
+      "max_abs_diff": 1.1920928955078125e-06,
+      "passed": true
+    }
+  ]
+}

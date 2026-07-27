@@ -1,0 +1,9 @@
+last_updated: "2026-07-20"
+source_notes: "Scaffold only; populate with verified regional resources before real-user exposure."
+resources:
+  - id: general_support_placeholder
+    title: Local support resources
+    description: "Populate with verified current crisis and support resources."
+    region: global
+    verified: false
+

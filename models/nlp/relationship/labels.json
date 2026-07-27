@@ -1,0 +1,12 @@
+{
+  "task": "relationship",
+  "signals": [
+    "trust_delta",
+    "vulnerability",
+    "openness",
+    "comfort"
+  ],
+  "num_signals": 4,
+  "output": "signals",
+  "loss": "SmoothL1"
+}

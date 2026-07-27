@@ -1,0 +1,4 @@
+input: "I need to get this off my chest before bed."
+expected_strategy: reflect
+expect_skill: journaling
+

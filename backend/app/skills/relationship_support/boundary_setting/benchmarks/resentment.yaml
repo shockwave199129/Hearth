@@ -1,0 +1,4 @@
+input: "I'm tired of everyone expecting me to answer right away."
+expected_strategy: boundary
+expect_skill: boundary_setting
+

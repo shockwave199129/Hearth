@@ -175,6 +175,36 @@ STT_MODELS_DIR = MODELS_DIR / "stt"
 TTS_MODELS_DIR = MODELS_DIR / "tts"
 EMBEDDING_MODELS_DIR = MODELS_DIR / "embedding"
 
+
+def resolve_nlp_models_dir() -> Path | None:
+    """Locate exported hearth_ai ONNX package (tokenizer + heads).
+
+    Order: ``NLP_MODELS_DIR`` env → ``{MODELS_DIR}/nlp`` (setup install
+    path) → repo ``models/nlp`` (dev checkout). Returns None when no usable
+    package is found so workers can fail-soft.
+
+    Populate the install path with ``app.setup.nlp_models.ensure_nlp_models``
+    (also called from ``download_models`` / ``scripts/setup.py``).
+    """
+    candidates: list[Path] = []
+    env = os.environ.get("NLP_MODELS_DIR", "").strip()
+    if env:
+        candidates.append(Path(env).expanduser())
+    candidates.append(MODELS_DIR / "nlp")
+    # Dev: repo root is parent of backend/ when running from source.
+    if not getattr(sys, "frozen", False):
+        candidates.append(BACKEND_DIR.parent / "models" / "nlp")
+    for path in candidates:
+        if (path / "manifest.json").is_file() and (path / "tokenizer.json").is_file():
+            return path
+    return None
+
+
+# Resolved at import; re-call resolve_nlp_models_dir() after ensure_nlp_models
+# if you need a post-install path in the same process.
+NLP_MODELS_DIR = resolve_nlp_models_dir()
+NLP_MODELS_INSTALL_DIR = MODELS_DIR / "nlp"
+
 # Parler-TTS weights live here as a plain directory (snapshot_download
 # local_dir) — not the hub cache's blobs/snapshots symlink layout.
 TTS_PARLER_REPO = "parler-tts/parler-tts-tiny-v1"
