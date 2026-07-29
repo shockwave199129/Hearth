@@ -248,16 +248,25 @@ class Trainer:
             ckpt_path = os.path.join(self.checkpoint_dir, "last.pt")
             self.save_checkpoint(ckpt_path, epoch)
 
-            if val_loss is not None and (not save_best_only or val_loss < best_val):
+            if val_loss is not None:
                 improved = val_loss < best_val
-                best_val = min(best_val, val_loss)
-                self.save_checkpoint(os.path.join(self.checkpoint_dir, "best.pt"), epoch)
-                epochs_without_improvement = 0 if improved else epochs_without_improvement + 1
-            elif val_loss is not None:
-                epochs_without_improvement += 1
+                if improved:
+                    best_val = val_loss
+                    epochs_without_improvement = 0
+                else:
+                    epochs_without_improvement += 1
+
+                if improved or not save_best_only:
+                    self.save_checkpoint(os.path.join(self.checkpoint_dir, "best.pt"), epoch)
+
+                # Checked outside the save branch on purpose: with
+                # save_best_only=False the old code took the save path every
+                # epoch and never reached this test, so early stopping silently
+                # did nothing.
                 if early_stop_patience and epochs_without_improvement >= early_stop_patience:
                     print(
-                        f"early stop: no val improvement for {epochs_without_improvement} epochs",
+                        f"early stop: no val improvement for {epochs_without_improvement} "
+                        f"epoch(s) (patience {early_stop_patience})",
                         flush=True,
                     )
                     break

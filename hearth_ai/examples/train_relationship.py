@@ -25,6 +25,7 @@ from _train_common import (
     ROOT,
     add_runtime_args,
     build_or_load_tokenizer,
+    encode_for_model,
     ensure_prepared_data,
     fit_kwargs,
     load_encoder_weights,
@@ -115,9 +116,8 @@ def main() -> None:
 
     model.eval()
     text = "I've never told anyone this before, but I feel broken inside."
-    ids, mask = tok.encode(text)
     with torch.no_grad():
-        pred = model(torch.tensor([ids]), torch.tensor([mask]))[0]
+        pred = model(*encode_for_model(model, tok, text))[0]
     named = {n: float(pred[i]) for i, n in enumerate(RELATIONSHIP_SIGNALS)}
     print(f"'{text}' -> {named}")
 

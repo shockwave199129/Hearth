@@ -25,6 +25,7 @@ from _train_common import (
     ROOT,
     add_runtime_args,
     build_or_load_tokenizer,
+    encode_for_model,
     ensure_prepared_data,
     fit_kwargs,
     load_encoder_weights,
@@ -128,9 +129,8 @@ def main() -> None:
 
     model.eval()
     text = "My goal this year is to save for a down payment."
-    ids, mask = tok.encode(text)
     with torch.no_grad():
-        out = model(torch.tensor([ids]), torch.tensor([mask]))
+        out = model(*encode_for_model(model, tok, text))
         store_p = torch.sigmoid(out["store_logit"]).item()
         typ = MEMORY_TYPES[int(out["type_logits"].argmax(-1).item())]
     print(f"'{text}' -> store_p={store_p:.2f} type={typ}")

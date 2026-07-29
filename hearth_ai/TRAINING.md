@@ -195,6 +195,8 @@ Installing into `{MODELS_DIR}/nlp` is handled by
 | `CUDA driver version is insufficient` | Wheel CUDA newer than the driver — drop a variant, or update the driver |
 | `torch ...+cpu` / `CPU-ONLY BUILD` | CPU wheel installed — `pip uninstall -y torch` first, then reinstall (see §0) |
 | `nvidia-smi not found` | Not on PATH; it's normally `C:\Windows\System32\nvidia-smi.exe`. The preflight checks there too, so if it still isn't found, reinstall the driver |
+| `Expected all tensors to be on the same device` | Was a bug in the post-training demo block — it built CPU tensors for a GPU model. Fixed via `encode_for_model` in `_train_common.py` |
+| Training stops after 2 of 3 epochs | `--early-stop-patience` too low for the cosine schedule; default is now 2. Pass `--early-stop-patience 0` to disable |
 | `cuda NOT AVAILABLE` | CPU-only torch build |
 | `venv NONE` / `dep torch MISSING` | Running the system Python instead of `.venv` — activate it, or set `HEARTH_PYTHON` to `<repo>\.venv\Scripts\python.exe` |
 | `.ps1` fails to parse: `string is missing the terminator` | The file lost its CRLF line endings. Windows PowerShell 5.1 cannot parse LF-only `.ps1`. `.gitattributes` pins `*.ps1` to `eol=crlf`; re-checkout the file |

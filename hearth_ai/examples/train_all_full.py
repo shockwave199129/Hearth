@@ -67,7 +67,10 @@ def main() -> None:
     parser.add_argument("--max-seq", type=int, default=128)
     parser.add_argument("--vocab-size", type=int, default=32000)
     parser.add_argument("--warmup-ratio", type=float, default=0.03)
-    parser.add_argument("--early-stop-patience", type=int, default=1)
+    # 2, not 1: at the default 3 epochs with warmup + cosine decay, the final
+    # epoch is usually the best one, and patience 1 aborts on a single flat
+    # epoch 2 before the decay has paid off.
+    parser.add_argument("--early-stop-patience", type=int, default=2)
     parser.add_argument("--log-every", type=int, default=100)
     parser.add_argument(
         "--max-train-rows",

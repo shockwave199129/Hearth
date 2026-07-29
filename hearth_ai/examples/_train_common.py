@@ -140,6 +140,24 @@ def resolve_sizing(args, *, smoke: bool) -> tuple[int, int]:
     return vocab_size, max_seq
 
 
+def encode_for_model(model, tok, text: str):
+    """Tokenize ``text`` as a batch of 1 on whatever device ``model`` is on.
+
+    Trainer moves the model to CUDA, so the demo tensors built after ``fit()``
+    have to follow it rather than defaulting to CPU. Read off the parameters
+    instead of re-deriving from ``cuda.is_available()`` so an explicit
+    ``Trainer(device=...)`` stays authoritative.
+    """
+    import torch
+
+    ids, mask = tok.encode(text)
+    device = next(model.parameters()).device
+    return (
+        torch.tensor([ids], device=device),
+        torch.tensor([mask], device=device),
+    )
+
+
 def load_encoder_weights(model, checkpoint_path: str, device: str) -> None:
     """Load encoder weights from a prior HearthModel checkpoint (warm start)."""
     import torch

@@ -25,6 +25,7 @@ from _train_common import (
     ROOT,
     add_runtime_args,
     build_or_load_tokenizer,
+    encode_for_model,
     ensure_prepared_data,
     fit_kwargs,
     load_encoder_weights,
@@ -123,9 +124,8 @@ def main() -> None:
 
     model.eval()
     text = "I just need someone to hear me without fixing it."
-    ids, mask = tok.encode(text)
     with torch.no_grad():
-        pred = int(model(torch.tensor([ids]), torch.tensor([mask])).argmax(-1).item())
+        pred = int(model(*encode_for_model(model, tok, text)).argmax(-1).item())
     print(f"'{text}' -> {STRATEGY_LABELS[pred]}")
 
 

@@ -32,6 +32,7 @@ from _train_common import (
     ROOT,
     add_runtime_args,
     build_or_load_tokenizer,
+    encode_for_model,
     ensure_prepared_data,
     fit_kwargs,
     make_config,
@@ -104,9 +105,8 @@ def main() -> None:
     # Quick inference: top emotion name
     model.eval()
     text = "I am so happy and grateful today!"
-    ids, mask = tok.encode(text)
     with torch.no_grad():
-        logits = model(torch.tensor([ids]), torch.tensor([mask]))
+        logits = model(*encode_for_model(model, tok, text))
         probs = torch.sigmoid(logits)[0]
         top = int(probs.argmax().item())
     print(f"\n'{text}' -> top emotion: {EMOTION_LABELS[top]} ({probs[top]:.3f})")

@@ -32,6 +32,7 @@ from _train_common import (
     ROOT,
     add_runtime_args,
     build_or_load_tokenizer,
+    encode_for_model,
     ensure_prepared_data,
     fit_kwargs,
     load_encoder_weights,
@@ -137,9 +138,8 @@ def main() -> None:
 
     model.eval()
     text = "I just got accepted into grad school!"
-    ids, mask = tok.encode(text)
     with torch.no_grad():
-        logits = model(torch.tensor([ids]), torch.tensor([mask]))
+        logits = model(*encode_for_model(model, tok, text))
     pred = INTENT_LABELS[logits.argmax(dim=-1).item()]
     print(f"\n'{text}' -> predicted intent: {pred}")
     print(f"Checkpoint: {args.checkpoint_dir}/best.pt (or last.pt)")
