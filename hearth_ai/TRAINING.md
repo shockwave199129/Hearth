@@ -9,13 +9,23 @@ RTX 50-series is `sm_120`. A CUDA 12.1 wheel has no kernel for it and will eithe
 fall back to CPU or fail with *"no kernel image is available for execution on the
 device"*, so install a **CUDA 12.8+** build:
 
+Everything goes into the repo's `.venv`. From the **repo root**:
+
 ```powershell
+python -m venv .venv                      # first time only
+.\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install torch --index-url https://download.pytorch.org/whl/cu128
-pip install -r ..\backend\requirements-common.txt
-pip install -r data\prepare\requirements.txt
-pip install -r requirements-export.txt
+pip install -r backend\requirements-common.txt
+pip install -r hearth_ai\data\prepare\requirements.txt
+pip install -r hearth_ai\requirements-export.txt
 ```
+
+You do not strictly need to activate `.venv` to train — the runner looks for
+`<repo>\.venv` and uses it regardless, so an un-activated shell can't silently
+fall back to a system Python that has no torch. Precedence is `-Python` /
+`HEARTH_PYTHON`, then an activated venv, then `<repo>\.venv`, then `python` on
+PATH (which warns).
 
 Verify before starting a multi-hour run:
 
@@ -23,7 +33,12 @@ Verify before starting a multi-hour run:
 .\scripts\train_full_nlp.ps1 -CheckOnly
 ```
 
-Expect `cuda ok True`, `sm_120`, and `bf16 ok True`.
+Expect a `venv` line pointing at your `.venv`, `dep ... ok` for all five packages,
+`gpu ... sm_120`, `bf16 yes`, and `kernel launch OK`. The preflight ends with a real
+kernel launch because that is the only thing that proves the wheel actually matches
+the card — `torch.cuda.is_available()` can return `True` on a build that still has no
+Blackwell kernels. Missing `torch` or `tokenizers` aborts the run; missing `datasets`
+or `onnx`/`onnxruntime` only warns, since those gate stages you may be skipping.
 
 ## 1. One command
 
@@ -34,6 +49,10 @@ From the repo root:
 ```
 
 That runs prepare → tokenizer → 5 heads → ONNX export → golden eval refresh.
+
+The `.ps1` is only a wrapper; the pipeline itself is `scripts/train_full_nlp.py`, so
+you can run it directly on any OS (`python scripts/train_full_nlp.py`). Add `-DryRun`
+to print the exact commands for every stage without executing them.
 
 If 8 GB VRAM is tight, keep the effective batch at 32 while halving memory:
 
@@ -129,7 +148,9 @@ Installing into `{MODELS_DIR}/nlp` is handled by
 | Symptom | Cause |
 |---|---|
 | `no kernel image is available` | cu121 wheel on `sm_120` — reinstall cu128 |
-| `cuda ok False` | CPU-only torch build |
+| `cuda NOT AVAILABLE` | CPU-only torch build |
+| `venv NONE` / `dep torch MISSING` | Running the system Python instead of `.venv` — activate it, or set `HEARTH_PYTHON` to `<repo>\.venv\Scripts\python.exe` |
+| `.ps1` fails to parse: `string is missing the terminator` | The file lost its CRLF line endings. Windows PowerShell 5.1 cannot parse LF-only `.ps1`. `.gitattributes` pins `*.ps1` to `eol=crlf`; re-checkout the file |
 | CUDA OOM | Lower `--batch-size`, raise `--grad-accum` |
 | DataLoader hangs on Windows | Set `--num-workers 0` |
 | Emotion metrics look impossibly good | Judged on `test_synthetic.jsonl` |

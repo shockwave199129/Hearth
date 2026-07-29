@@ -1,0 +1,13 @@
+* text=auto
+
+# Windows PowerShell 5.1 mis-parses here-strings and multi-line blocks in
+# LF-only .ps1 files, so these must stay CRLF on checkout everywhere.
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+*.sh text eol=lf
+*.py text eol=lf
+
+*.jsonl text eol=lf
+*.onnx binary

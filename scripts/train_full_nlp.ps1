@@ -1,143 +1,115 @@
-<#
-.SYNOPSIS
-  Full Hearth NLP training run on Windows: prepare -> tokenizer -> 5 heads -> ONNX.
+# Full Hearth NLP training run on Windows.
+#
+# Thin wrapper around scripts/train_full_nlp.py, which holds all the logic.
+# Kept ASCII-only with CRLF line endings on purpose: Windows PowerShell 5.1
+# mis-parses here-strings in LF-only files and reads non-ASCII as CP1252.
+#
+# Examples:
+#   .\scripts\train_full_nlp.ps1 -CheckOnly
+#   .\scripts\train_full_nlp.ps1
+#   .\scripts\train_full_nlp.ps1 -BatchSize 16 -GradAccum 2
+#   .\scripts\train_full_nlp.ps1 -SkipPrepare -Only memory,strategy
 
-.DESCRIPTION
-  Combines the HF datasets (go_emotions, dair-ai/emotion, empathetic_dialogues_v2,
-  daily_dialog, tanaos) with data/hearth_relationship_understanding.jsonl, then
-  trains all five heads on the shared ~90M encoder and exports ONNX.
-
-  RTX 50-series (Blackwell, sm_120) needs a CUDA 12.8+ PyTorch build. Verify with
-  -CheckOnly before starting a multi-hour run; a cu121 wheel will either fall back
-  to CPU or fail with "no kernel image is available for execution on the device".
-
-.EXAMPLE
-  .\scripts\train_full_nlp.ps1 -CheckOnly
-  .\scripts\train_full_nlp.ps1
-  .\scripts\train_full_nlp.ps1 -BatchSize 24 -GradAccum 2 -Epochs 3
-  .\scripts\train_full_nlp.ps1 -SkipPrepare -Only memory,strategy
-#>
-
+# Rates are [string], not [double]: PowerShell renders doubles with the current
+# culture, so on a comma-decimal locale -Lr would reach Python as '0,0003'.
 [CmdletBinding()]
 param(
-    [int]    $Epochs        = 3,
-    [int]    $BatchSize     = 32,
-    [int]    $GradAccum     = 1,
-    [double] $Lr            = 3e-4,
-    [int]    $MaxSeq        = 128,
-    [int]    $VocabSize     = 32000,
-    [int]    $NumWorkers    = 0,
+    [int]    $Epochs         = 3,
+    [int]    $BatchSize      = 32,
+    [int]    $GradAccum      = 1,
+    [string] $Lr             = '3e-4',
+    [int]    $MaxSeq         = 128,
+    [int]    $VocabSize      = 32000,
+    [int]    $NumWorkers     = 0,
     [ValidateSet('off', 'auto', 'bf16', 'fp16')]
-    [string] $Amp           = 'auto',
-    [int]    $MaxTrainRows  = 0,
+    [string] $Amp            = 'auto',
+    [int]    $MaxTrainRows   = 0,
     [int]    $SyntheticLimit = 0,
-    [double] $EmotionShare  = 0.30,
-    [double] $IntentShare   = 0.50,
-    [string[]] $Only        = @('emotion', 'intent', 'memory', 'relationship', 'strategy'),
+    [string] $EmotionShare   = '0.30',
+    [string] $IntentShare    = '0.50',
+    [string[]] $Only         = @('emotion', 'intent', 'memory', 'relationship', 'strategy'),
     [switch] $SkipPrepare,
     [switch] $SkipHf,
     [switch] $SkipTokenizer,
     [switch] $SkipExport,
+    [switch] $SkipEval,
     [switch] $StrictGates,
-    [switch] $CheckOnly
+    [switch] $CheckOnly,
+    [switch] $DryRun
 )
 
 $ErrorActionPreference = 'Stop'
 
-$RepoRoot   = Split-Path -Parent $PSScriptRoot
-$HearthRoot = Join-Path $RepoRoot 'hearth_ai'
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+$Runner   = Join-Path $PSScriptRoot 'train_full_nlp.py'
 
-if (-not (Test-Path $HearthRoot)) {
-    throw "hearth_ai not found at $HearthRoot"
+if (-not (Test-Path $Runner)) {
+    throw "runner not found: $Runner"
 }
 
-$Python = if ($env:HEARTH_PYTHON) { $env:HEARTH_PYTHON } else { 'python' }
-
-# tokenizers' Rust thread pool oversubscribes the CPU next to the DataLoader.
-$env:TOKENIZERS_PARALLELISM = 'false'
-
-Write-Host "=== Environment ===" -ForegroundColor Cyan
-& $Python -c @"
-import sys
-print('python  ', sys.version.split()[0])
-try:
-    import torch
-    print('torch   ', torch.__version__, '| cuda build', torch.version.cuda)
-    print('cuda ok ', torch.cuda.is_available())
-    if torch.cuda.is_available():
-        name = torch.cuda.get_device_name(0)
-        cap = torch.cuda.get_device_capability(0)
-        total = torch.cuda.get_device_properties(0).total_memory / 1024**3
-        print(f'gpu      {name} sm_{cap[0]}{cap[1]} {total:.1f} GiB')
-        print('bf16 ok ', torch.cuda.is_bf16_supported())
-        if cap[0] >= 12 and int(str(torch.version.cuda or '0').split('.')[0]) < 12:
-            print('WARNING: Blackwell GPU with a pre-CUDA-12 torch build')
-    else:
-        print('WARNING: no CUDA device visible — training will run on CPU')
-except ImportError:
-    print('torch not installed')
-"@
-if ($LASTEXITCODE -ne 0) { throw 'environment check failed' }
-
-if ($CheckOnly) {
-    Write-Host "`nCheck only — install torch for CUDA 12.8 if the GPU line is missing:" -ForegroundColor Yellow
-    Write-Host '  pip install torch --index-url https://download.pytorch.org/whl/cu128'
-    exit 0
-}
-
-Push-Location $HearthRoot
-try {
-    if (-not $SkipPrepare) {
-        Write-Host "`n=== 1/3 Prepare corpus (HF + 500k synthetic) ===" -ForegroundColor Cyan
-        $prepareArgs = @(
-            '-m', 'data.prepare.prepare_all_full',
-            '--emotion-share', $EmotionShare,
-            '--intent-share', $IntentShare
-        )
-        if ($SyntheticLimit -gt 0) { $prepareArgs += @('--limit', $SyntheticLimit) }
-        if ($SkipHf)               { $prepareArgs += '--skip-hf' }
-        & $Python @prepareArgs
-        if ($LASTEXITCODE -ne 0) { throw 'prepare failed' }
+# Deps live in the repo's .venv. Resolve it explicitly rather than trusting
+# PATH, so an un-activated shell doesn't silently run the system Python (which
+# has no torch) an hour into the job.
+function Resolve-VenvPython {
+    param([string] $Root)
+    foreach ($rel in @('Scripts\python.exe', 'bin/python')) {
+        $candidate = Join-Path $Root $rel
+        if (Test-Path $candidate) { return $candidate }
     }
-    else {
-        Write-Host "`nSkipping prepare (reusing data/*)" -ForegroundColor Yellow
-    }
-
-    Write-Host "`n=== 2/3 Train all heads ===" -ForegroundColor Cyan
-    $trainArgs = @(
-        'examples/train_all_full.py',
-        '--epochs', $Epochs,
-        '--batch-size', $BatchSize,
-        '--grad-accum', $GradAccum,
-        '--lr', $Lr,
-        '--max-seq', $MaxSeq,
-        '--vocab-size', $VocabSize,
-        '--num-workers', $NumWorkers,
-        '--amp', $Amp,
-        '--only'
-    ) + $Only
-    if ($MaxTrainRows -gt 0) { $trainArgs += @('--max-train-rows', $MaxTrainRows) }
-    if ($SkipTokenizer)      { $trainArgs += '--skip-tokenizer' }
-    if ($SkipExport)         { $trainArgs += '--skip-export' }
-    if ($StrictGates)        { $trainArgs += '--strict-gates' }
-
-    & $Python @trainArgs
-    if ($LASTEXITCODE -ne 0) { throw 'training failed' }
-}
-finally {
-    Pop-Location
+    return $null
 }
 
-if (-not $SkipExport) {
-    Write-Host "`n=== 3/3 Refresh golden eval ===" -ForegroundColor Cyan
-    Push-Location (Join-Path $RepoRoot 'backend')
-    try {
-        & $Python -m app.eval.nlp_golden --update
-        & $Python -m app.eval.nlp_golden
-    }
-    finally {
-        Pop-Location
-    }
+if ($env:HEARTH_PYTHON) {
+    $Python = $env:HEARTH_PYTHON
+    $PythonSource = 'HEARTH_PYTHON'
+}
+elseif ($env:VIRTUAL_ENV -and (Resolve-VenvPython $env:VIRTUAL_ENV)) {
+    $Python = Resolve-VenvPython $env:VIRTUAL_ENV
+    $PythonSource = 'activated venv'
+}
+elseif (Resolve-VenvPython (Join-Path $RepoRoot '.venv')) {
+    $Python = Resolve-VenvPython (Join-Path $RepoRoot '.venv')
+    $PythonSource = 'repo .venv'
+}
+else {
+    $Python = 'python'
+    $PythonSource = 'PATH'
+    Write-Warning "No .venv found under $RepoRoot - falling back to 'python' on PATH."
 }
 
-Write-Host "`nDone." -ForegroundColor Green
+$CliArgs = @(
+    $Runner
+    '--epochs',          $Epochs
+    '--batch-size',      $BatchSize
+    '--grad-accum',      $GradAccum
+    '--lr',              $Lr
+    '--max-seq',         $MaxSeq
+    '--vocab-size',      $VocabSize
+    '--num-workers',     $NumWorkers
+    '--amp',             $Amp
+    '--emotion-share',   $EmotionShare
+    '--intent-share',    $IntentShare
+)
+
+if ($MaxTrainRows -gt 0)   { $CliArgs += @('--max-train-rows', $MaxTrainRows) }
+if ($SyntheticLimit -gt 0) { $CliArgs += @('--synthetic-limit', $SyntheticLimit) }
+if ($SkipPrepare)          { $CliArgs += '--skip-prepare' }
+if ($SkipHf)               { $CliArgs += '--skip-hf' }
+if ($SkipTokenizer)        { $CliArgs += '--skip-tokenizer' }
+if ($SkipExport)           { $CliArgs += '--skip-export' }
+if ($SkipEval)             { $CliArgs += '--skip-eval' }
+if ($StrictGates)          { $CliArgs += '--strict-gates' }
+if ($CheckOnly)            { $CliArgs += '--check-only' }
+if ($DryRun)               { $CliArgs += '--dry-run' }
+
+$CliArgs += @('--only')
+$CliArgs += $Only
+
+Write-Host "Repo: $RepoRoot"
+Write-Host "Python: $Python  [$PythonSource]"
+
+& $Python @CliArgs
+
+if ($LASTEXITCODE -ne 0) {
+    throw "training pipeline failed with exit code $LASTEXITCODE"
+}
