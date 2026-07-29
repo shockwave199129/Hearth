@@ -9,6 +9,7 @@ backend/models/**/*.bin
 
 # Exported hearth_ai ONNX (regenerate via hearth_ai/examples/export_onnx.py)
 models/nlp/**/*.onnx
+models/nlp/**/*.json
 
 # PyInstaller build workdir — scripts/build_backend.sh/.ps1's --workpath.
 /.pyinstaller-build
@@ -34,6 +35,7 @@ The Book/
 .codex/
 
 # hearth_ai prepared HF JSONL (regenerate via data/prepare/)
+hearth_ai/data/base/
 hearth_ai/data/emotion/
 hearth_ai/data/intent/
 hearth_ai/data/memory/
