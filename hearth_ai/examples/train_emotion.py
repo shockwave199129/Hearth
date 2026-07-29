@@ -30,9 +30,13 @@ from hearth_ai.trainer.train import Trainer
 
 from _train_common import (
     ROOT,
+    add_runtime_args,
     build_or_load_tokenizer,
     ensure_prepared_data,
+    fit_kwargs,
     make_config,
+    resolve_sizing,
+    trainer_kwargs,
 )
 
 
@@ -45,6 +49,7 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=0.0)
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints/emotion")
     parser.add_argument("--tokenizer", type=str, default="hearth_ai/tokenizer/emotion_intent.json")
+    add_runtime_args(parser)
     args = parser.parse_args()
     smoke = not args.full
 
@@ -53,14 +58,16 @@ def main() -> None:
     val_path = data_dir / "val.jsonl"
     paths = [train_path, val_path, data_dir / "test.jsonl"]
 
-    vocab_size = 4000 if smoke else 32000
-    max_seq = 64 if smoke else 128
+    vocab_size, max_seq = resolve_sizing(args, smoke=smoke)
+    tok_path = ROOT / args.tokenizer
     tok = build_or_load_tokenizer(
         paths,
-        ROOT / args.tokenizer,
+        tok_path,
         vocab_size=vocab_size,
         max_seq_len=max_seq,
-        force_retrain=True,
+        # Emotion normally trains first and owns the shared vocab; --keep-tokenizer
+        # is required when build_tokenizer.py already produced a cross-task one.
+        force_retrain=not (args.keep_tokenizer and tok_path.is_file()),
     )
     cfg = make_config(smoke=smoke, vocab_size=tok.vocab_size, max_seq_len=max_seq)
 
@@ -74,8 +81,10 @@ def main() -> None:
             raise ValueError(f"expected {len(EMOTION_LABELS)} labels, got {len(labels)}")
         return torch.tensor(labels, dtype=torch.float)
 
-    train_ds = HearthDataset(str(train_path), tok, label_fn)
+    max_rows = args.max_train_rows or None
+    train_ds = HearthDataset(str(train_path), tok, label_fn, max_examples=max_rows)
     val_ds = HearthDataset(str(val_path), tok, label_fn) if val_path.is_file() else None
+    print(f"train rows: {len(train_ds)}  val rows: {len(val_ds) if val_ds else 0}")
 
     epochs = args.epochs or (5 if smoke else 3)
     batch_size = args.batch_size or (8 if smoke else 16)
@@ -88,8 +97,9 @@ def main() -> None:
         loss_fn=emotion_loss,
         pad_id=tok.pad_id,
         checkpoint_dir=args.checkpoint_dir,
+        **trainer_kwargs(args),
     )
-    trainer.fit(epochs=epochs, batch_size=batch_size, lr=lr)
+    trainer.fit(epochs=epochs, batch_size=batch_size, lr=lr, **fit_kwargs(args))
 
     # Quick inference: top emotion name
     model.eval()

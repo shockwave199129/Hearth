@@ -39,5 +39,7 @@ hearth_ai/data/intent/
 hearth_ai/data/memory/
 hearth_ai/data/relationship/
 hearth_ai/data/strategy/
+hearth_ai/data/synthetic/
+hearth_ai/data/seed/
 !hearth_ai/data/intent_sample.jsonl
 hearth_ai/checkpoints/

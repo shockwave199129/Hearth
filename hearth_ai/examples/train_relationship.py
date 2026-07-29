@@ -23,10 +23,14 @@ from hearth_ai.trainer.train import Trainer
 
 from _train_common import (
     ROOT,
+    add_runtime_args,
     build_or_load_tokenizer,
     ensure_prepared_data,
+    fit_kwargs,
     load_encoder_weights,
     make_config,
+    resolve_sizing,
+    trainer_kwargs,
 )
 
 # Soft MAE gate for smoke/synthetic data (plan: "under tuned threshold")
@@ -60,6 +64,7 @@ def main() -> None:
     parser.add_argument("--tokenizer", type=str, default="hearth_ai/tokenizer/emotion_intent.json")
     parser.add_argument("--warm-start", type=str, default="")
     parser.add_argument("--strict-gate", action="store_true")
+    add_runtime_args(parser)
     args = parser.parse_args()
     smoke = not args.full
 
@@ -67,8 +72,7 @@ def main() -> None:
     train_path, val_path = data_dir / "train.jsonl", data_dir / "val.jsonl"
     paths = [train_path, val_path, data_dir / "test.jsonl"]
 
-    vocab_size = 4000 if smoke else 32000
-    max_seq = 64 if smoke else 128
+    vocab_size, max_seq = resolve_sizing(args, smoke=smoke)
     tok_path = ROOT / args.tokenizer
     tok = build_or_load_tokenizer(
         paths, tok_path, vocab_size=vocab_size, max_seq_len=max_seq, force_retrain=not tok_path.is_file()
@@ -85,7 +89,9 @@ def main() -> None:
     def label_fn(ex):
         return torch.tensor(relationship_example_to_list(ex), dtype=torch.float)
 
-    train_ds = HearthDataset(str(train_path), tok, label_fn)
+    train_ds = HearthDataset(
+        str(train_path), tok, label_fn, max_examples=args.max_train_rows or None
+    )
     val_ds = HearthDataset(str(val_path), tok, label_fn) if val_path.is_file() else None
 
     trainer = Trainer(
@@ -95,11 +101,12 @@ def main() -> None:
         loss_fn=relationship_loss,
         pad_id=tok.pad_id,
         checkpoint_dir=args.checkpoint_dir,
+        **trainer_kwargs(args),
     )
     epochs = args.epochs or (5 if smoke else 3)
     batch_size = args.batch_size or (8 if smoke else 16)
     lr = args.lr or (1e-3 if smoke else 3e-4)
-    trainer.fit(epochs=epochs, batch_size=batch_size, lr=lr)
+    trainer.fit(epochs=epochs, batch_size=batch_size, lr=lr, **fit_kwargs(args))
 
     mae = _eval_mae(model, val_ds or train_ds, device)
     print(f"Eval MAE: {mae:.3f} (gate ≤ {MAE_GATE})")

@@ -19,7 +19,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from examples._train_common import make_config  # noqa: E402
-from hearth_ai.export.onnx_export import export_all  # noqa: E402
+from hearth_ai.export.onnx_export import (  # noqa: E402
+    config_from_dict,
+    export_all,
+    load_checkpoint_state,
+)
 from hearth_ai.tokenizer.hearth_tokenizer import HearthTokenizer  # noqa: E402
 
 
@@ -50,16 +54,37 @@ def main() -> None:
         default="emotion",
         help="Which task checkpoint supplies the shared encoder.onnx weights",
     )
+    parser.add_argument(
+        "--ignore-checkpoint-config",
+        action="store_true",
+        help="Use --smoke/--full defaults instead of the config stored in the checkpoint",
+    )
     args = parser.parse_args()
     smoke = not args.full
 
     if not args.tokenizer.is_file():
         raise SystemExit(f"Tokenizer not found: {args.tokenizer}")
-    tok = HearthTokenizer(str(args.tokenizer), max_seq_len=64 if smoke else 128)
-    max_seq = 64 if smoke else 128
-    cfg = make_config(smoke=smoke, vocab_size=tok.vocab_size, max_seq_len=max_seq)
 
-    print(f"Exporting smoke={smoke} vocab={cfg.vocab_size} → {args.out}")
+    # Checkpoints written by Trainer embed their HearthConfig, which is the only
+    # reliable source once --max-seq / --vocab-size have been overridden at
+    # train time. Fall back to smoke/full defaults for older checkpoints.
+    cfg = None
+    if not args.ignore_checkpoint_config:
+        for name in ("best.pt", "last.pt"):
+            probe = args.checkpoint_root / args.encoder_from / name
+            if probe.is_file():
+                _, embedded = load_checkpoint_state(probe)
+                if embedded:
+                    cfg = config_from_dict(embedded)
+                    print(f"Using config embedded in {probe}")
+                break
+
+    if cfg is None:
+        max_seq = 64 if smoke else 128
+        tok = HearthTokenizer(str(args.tokenizer), max_seq_len=max_seq)
+        cfg = make_config(smoke=smoke, vocab_size=tok.vocab_size, max_seq_len=max_seq)
+
+    print(f"Exporting smoke={smoke} vocab={cfg.vocab_size} seq={cfg.max_seq_len} → {args.out}")
     results = export_all(
         args.checkpoint_root,
         args.out,

@@ -30,10 +30,14 @@ from hearth_ai.trainer.train import Trainer
 
 from _train_common import (
     ROOT,
+    add_runtime_args,
     build_or_load_tokenizer,
     ensure_prepared_data,
+    fit_kwargs,
     load_encoder_weights,
     make_config,
+    resolve_sizing,
+    trainer_kwargs,
 )
 
 
@@ -62,6 +66,7 @@ def main() -> None:
         action="store_true",
         help="Use tiny data/intent_sample.jsonl instead of prepared HF JSONL",
     )
+    add_runtime_args(parser)
     args = parser.parse_args()
     smoke = not args.full
 
@@ -75,8 +80,7 @@ def main() -> None:
         val_path = data_dir / "val.jsonl"
         paths = [train_path, val_path, data_dir / "test.jsonl"]
 
-    vocab_size = 4000 if smoke else 32000
-    max_seq = 64 if smoke else 128
+    vocab_size, max_seq = resolve_sizing(args, smoke=smoke)
     tok_path = ROOT / args.tokenizer
     # Reuse existing shared tokenizer if present (emotion run); else train.
     force = not tok_path.is_file()
@@ -107,12 +111,14 @@ def main() -> None:
     def label_fn(ex):
         return torch.tensor(INTENT_LABELS.index(ex["intent"]), dtype=torch.long)
 
-    train_ds = HearthDataset(str(train_path), tok, label_fn)
+    max_rows = args.max_train_rows or None
+    train_ds = HearthDataset(str(train_path), tok, label_fn, max_examples=max_rows)
     val_ds = (
         HearthDataset(str(val_path), tok, label_fn)
         if val_path is not None and val_path.is_file()
         else None
     )
+    print(f"train rows: {len(train_ds)}  val rows: {len(val_ds) if val_ds else 0}")
 
     epochs = args.epochs or (5 if smoke else 3)
     batch_size = args.batch_size or (8 if smoke else 16)
@@ -125,8 +131,9 @@ def main() -> None:
         loss_fn=intent_loss,
         pad_id=tok.pad_id,
         checkpoint_dir=args.checkpoint_dir,
+        **trainer_kwargs(args),
     )
-    trainer.fit(epochs=epochs, batch_size=batch_size, lr=lr)
+    trainer.fit(epochs=epochs, batch_size=batch_size, lr=lr, **fit_kwargs(args))
 
     model.eval()
     text = "I just got accepted into grad school!"

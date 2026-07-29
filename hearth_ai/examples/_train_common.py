@@ -82,6 +82,64 @@ def make_config(*, smoke: bool, vocab_size: int, max_seq_len: int | None = None)
     return HearthConfig(vocab_size=vocab_size, max_seq_len=max_seq_len or 128)
 
 
+def add_runtime_args(parser) -> None:
+    """GPU / dataloader flags shared by every train_*.py script."""
+    parser.add_argument(
+        "--amp",
+        choices=["off", "auto", "bf16", "fp16"],
+        default="auto",
+        help="Mixed precision on CUDA (auto = bf16 where supported)",
+    )
+    parser.add_argument("--grad-accum", type=int, default=1)
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=0,
+        help="DataLoader workers; keep 0 on Windows unless verified (spawn + tokenizer pickling)",
+    )
+    parser.add_argument("--max-seq", type=int, default=0, help="Override sequence length")
+    parser.add_argument("--vocab-size", type=int, default=0, help="Override tokenizer vocab target")
+    parser.add_argument("--warmup-ratio", type=float, default=0.03)
+    parser.add_argument("--early-stop-patience", type=int, default=0)
+    parser.add_argument("--log-every", type=int, default=100, help="0 = only per-epoch logs")
+    parser.add_argument(
+        "--max-train-rows",
+        type=int,
+        default=0,
+        help="Cap train rows loaded from JSONL (0 = all)",
+    )
+    parser.add_argument(
+        "--keep-tokenizer",
+        action="store_true",
+        help="Never retrain the tokenizer — required when sharing one across heads",
+    )
+
+
+def trainer_kwargs(args) -> dict:
+    """Trainer(...) kwargs from the shared runtime flags."""
+    return {
+        "amp": args.amp,
+        "grad_accum_steps": args.grad_accum,
+        "log_every": args.log_every,
+    }
+
+
+def fit_kwargs(args) -> dict:
+    """Trainer.fit(...) kwargs from the shared runtime flags."""
+    return {
+        "num_workers": args.num_workers,
+        "warmup_ratio": args.warmup_ratio,
+        "early_stop_patience": args.early_stop_patience,
+    }
+
+
+def resolve_sizing(args, *, smoke: bool) -> tuple[int, int]:
+    """(vocab_size, max_seq_len) honouring overrides, else smoke/full defaults."""
+    vocab_size = args.vocab_size or (4000 if smoke else 32000)
+    max_seq = args.max_seq or (64 if smoke else 128)
+    return vocab_size, max_seq
+
+
 def load_encoder_weights(model, checkpoint_path: str, device: str) -> None:
     """Load encoder weights from a prior HearthModel checkpoint (warm start)."""
     import torch
