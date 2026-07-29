@@ -5,21 +5,39 @@ Trains all five heads on the ~90M shared encoder from the HF datasets plus the
 
 ## 0. PyTorch for Blackwell
 
-RTX 50-series is `sm_120`. A CUDA 12.1 wheel has no kernel for it and will either
-fall back to CPU or fail with *"no kernel image is available for execution on the
-device"*, so install a **CUDA 12.8+** build:
+RTX 50-series is `sm_120`. Two independent constraints decide the wheel:
 
-Everything goes into the repo's `.venv`. From the **repo root**:
+- **Floor:** Blackwell kernels first shipped in CUDA **12.8**. An older wheel
+  (e.g. cu121) either falls back to CPU or fails with *"no kernel image is
+  available for execution on the device"*.
+- **Ceiling:** the wheel's CUDA major must not exceed what your driver supports.
+  Check the `CUDA Version` in `nvidia-smi`'s header.
+
+Pick the newest variant at or below your driver's CUDA version:
+
+| Driver reports | Use | Newest torch there |
+|---|---|---|
+| 13.2+ | `cu132` | 2.13.0 |
+| 13.0–13.1 | `cu130` | 2.13.0 |
+| 12.8–12.9 | `cu128` | 2.11.0 |
+| below 12.8 | — | update the driver first |
+
+Everything goes into the repo's `.venv`. From the **repo root** — this uses
+`cu132`, correct for driver 610.88 / CUDA 13.3; substitute your row above:
 
 ```powershell
 python -m venv .venv                      # first time only
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install torch --index-url https://download.pytorch.org/whl/cu128
+pip install torch --index-url https://download.pytorch.org/whl/cu132
 pip install -r backend\requirements-common.txt
 pip install -r hearth_ai\data\prepare\requirements.txt
 pip install -r hearth_ai\requirements-export.txt
 ```
+
+Don't guess the variant — `-CheckOnly` reads `nvidia-smi` and prints the exact
+`pip install` line for your driver, including when a newer variant than the one
+you have installed is available.
 
 You do not strictly need to activate `.venv` to train — the runner looks for
 `<repo>\.venv` and uses it regardless, so an un-activated shell can't silently
@@ -33,12 +51,22 @@ Verify before starting a multi-hour run:
 .\scripts\train_full_nlp.ps1 -CheckOnly
 ```
 
-Expect a `venv` line pointing at your `.venv`, `dep ... ok` for all five packages,
-`gpu ... sm_120`, `bf16 yes`, and `kernel launch OK`. The preflight ends with a real
-kernel launch because that is the only thing that proves the wheel actually matches
-the card — `torch.cuda.is_available()` can return `True` on a build that still has no
-Blackwell kernels. Missing `torch` or `tokenizers` aborts the run; missing `datasets`
-or `onnx`/`onnxruntime` only warns, since those gate stages you may be skipping.
+Expect a `venv` line pointing at your `.venv`, a `driver` line, `dep ... ok` for all
+five packages, `gpu ... sm_120`, `bf16 yes`, and `kernel launch OK`:
+
+```
+driver   610.88  supports CUDA up to 13.3
+torch    2.13.0+cu132  cuda build 13.2
+gpu      NVIDIA GeForce RTX 5060  sm_120  8.0 GiB
+bf16     yes
+kernel   launch OK
+```
+
+The preflight ends with a real kernel launch because that is the only thing that
+proves the wheel actually matches the card — `torch.cuda.is_available()` can return
+`True` on a build that still has no Blackwell kernels. Missing `torch` or `tokenizers`
+aborts the run; missing `datasets` or `onnx`/`onnxruntime` only warns, since those gate
+stages you may be skipping.
 
 ## 1. One command
 
@@ -147,7 +175,8 @@ Installing into `{MODELS_DIR}/nlp` is handled by
 
 | Symptom | Cause |
 |---|---|
-| `no kernel image is available` | cu121 wheel on `sm_120` — reinstall cu128 |
+| `no kernel image is available` | Wheel below CUDA 12.8 on `sm_120` — reinstall per the table in §0 |
+| `CUDA driver version is insufficient` | Wheel CUDA newer than the driver — drop a variant, or update the driver |
 | `cuda NOT AVAILABLE` | CPU-only torch build |
 | `venv NONE` / `dep torch MISSING` | Running the system Python instead of `.venv` — activate it, or set `HEARTH_PYTHON` to `<repo>\.venv\Scripts\python.exe` |
 | `.ps1` fails to parse: `string is missing the terminator` | The file lost its CRLF line endings. Windows PowerShell 5.1 cannot parse LF-only `.ps1`. `.gitattributes` pins `*.ps1` to `eol=crlf`; re-checkout the file |
