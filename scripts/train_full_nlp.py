@@ -60,7 +60,12 @@ def run(cmd: list[str], *, cwd: Path, label: str, dry_run: bool) -> None:
     if dry_run:
         return
     started = time.perf_counter()
-    subprocess.run(cmd, cwd=str(cwd), check=True)
+    completed = subprocess.run(cmd, cwd=str(cwd), check=False)
+    if completed.returncode != 0:
+        # A traceback here would only point at this line, not the real problem,
+        # which the stage already printed above.
+        print(f"\n{label} FAILED (exit {completed.returncode}) - stopping.", file=sys.stderr)
+        raise SystemExit(completed.returncode)
     print(f"-- {label} finished in {(time.perf_counter() - started) / 60:.1f} min", flush=True)
 
 
@@ -85,6 +90,11 @@ def main() -> int:
     # Stages
     parser.add_argument("--check-only", action="store_true")
     parser.add_argument("--skip-check", action="store_true")
+    parser.add_argument(
+        "--allow-cpu",
+        action="store_true",
+        help="Proceed without a GPU. Training all five heads on CPU takes days",
+    )
     parser.add_argument("--skip-prepare", action="store_true")
     parser.add_argument("--skip-hf", action="store_true")
     parser.add_argument("--skip-tokenizer", action="store_true")
@@ -104,8 +114,13 @@ def main() -> int:
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
     if not args.skip_check:
+        # Default to failing without a GPU: five heads on CPU takes days, and
+        # silently starting that is worse than stopping to fix the torch wheel.
+        preflight = [python, str(REPO_ROOT / "scripts" / "check_gpu.py")]
+        if not args.allow_cpu:
+            preflight.append("--require-cuda")
         run(
-            [python, str(REPO_ROOT / "scripts" / "check_gpu.py")],
+            preflight,
             cwd=REPO_ROOT,
             label="Environment preflight",
             dry_run=args.dry_run,

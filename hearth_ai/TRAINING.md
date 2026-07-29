@@ -39,6 +39,22 @@ Don't guess the variant — `-CheckOnly` reads `nvidia-smi` and prints the exact
 `pip install` line for your driver, including when a newer variant than the one
 you have installed is available.
 
+**If you already have a CPU-only torch** (`-CheckOnly` shows `torch 2.13.0+cpu`
+and `CPU-ONLY BUILD`), a plain `pip install torch --index-url ...` will *not* fix
+it. pip sees `torch` as already installed and skips the download regardless of the
+`+cpu` / `+cu132` tag, so uninstall first:
+
+```powershell
+pip uninstall -y torch
+pip install torch --index-url https://download.pytorch.org/whl/cu132
+```
+
+This is the usual outcome of having run a bare `pip install torch` at some point,
+which pulls `+cpu` on Windows.
+
+The runner refuses to start without a working GPU, since five heads on CPU takes
+days. Pass `-AllowCpu` if you really want that (e.g. a smoke run on a laptop).
+
 You do not strictly need to activate `.venv` to train — the runner looks for
 `<repo>\.venv` and uses it regardless, so an un-activated shell can't silently
 fall back to a system Python that has no torch. Precedence is `-Python` /
@@ -177,6 +193,8 @@ Installing into `{MODELS_DIR}/nlp` is handled by
 |---|---|
 | `no kernel image is available` | Wheel below CUDA 12.8 on `sm_120` — reinstall per the table in §0 |
 | `CUDA driver version is insufficient` | Wheel CUDA newer than the driver — drop a variant, or update the driver |
+| `torch ...+cpu` / `CPU-ONLY BUILD` | CPU wheel installed — `pip uninstall -y torch` first, then reinstall (see §0) |
+| `nvidia-smi not found` | Not on PATH; it's normally `C:\Windows\System32\nvidia-smi.exe`. The preflight checks there too, so if it still isn't found, reinstall the driver |
 | `cuda NOT AVAILABLE` | CPU-only torch build |
 | `venv NONE` / `dep torch MISSING` | Running the system Python instead of `.venv` — activate it, or set `HEARTH_PYTHON` to `<repo>\.venv\Scripts\python.exe` |
 | `.ps1` fails to parse: `string is missing the terminator` | The file lost its CRLF line endings. Windows PowerShell 5.1 cannot parse LF-only `.ps1`. `.gitattributes` pins `*.ps1` to `eol=crlf`; re-checkout the file |

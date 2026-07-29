@@ -24,6 +24,7 @@ import argparse
 import importlib.util
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -62,14 +63,40 @@ def recommend_wheel(driver_cuda: tuple[int, int] | None) -> str | None:
     return None
 
 
-def install_hint(driver_cuda: tuple[int, int] | None) -> str:
+def install_hint(driver_cuda: tuple[int, int] | None, *, replace: bool = False) -> str:
+    """pip command to get the right torch, or an explanation of why none fits.
+
+    ``replace=True`` prepends an uninstall: pip treats an already-installed
+    ``torch`` as satisfying ``pip install torch`` regardless of its local
+    version tag, so swapping a ``+cpu`` build for a ``+cu132`` one is otherwise
+    a silent no-op.
+    """
     variant = recommend_wheel(driver_cuda)
     if variant is None:
         return (
             f"driver supports only CUDA {format_cuda(driver_cuda)}; Blackwell needs "
             f"{format_cuda(BLACKWELL_MIN_CUDA)}+ - update the NVIDIA driver first"
         )
-    return f"pip install torch --index-url {TORCH_INDEX}{variant}"
+    install = f"pip install torch --index-url {TORCH_INDEX}{variant}"
+    # ';' rather than '&&' so the line is pasteable into Windows PowerShell 5.1.
+    return f"pip uninstall -y torch; {install}" if replace else install
+
+
+def find_nvidia_smi() -> str | None:
+    """Locate nvidia-smi, including the Windows paths that aren't always on PATH."""
+    if found := shutil.which("nvidia-smi"):
+        return found
+
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    candidates = [
+        Path(system_root) / "System32" / "nvidia-smi.exe",
+        Path(program_files) / "NVIDIA Corporation" / "NVSMI" / "nvidia-smi.exe",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return None
 
 
 def probe_nvidia_smi() -> tuple[str | None, tuple[int, int] | None]:
@@ -78,11 +105,15 @@ def probe_nvidia_smi() -> tuple[str | None, tuple[int, int] | None]:
     Read before importing torch so a missing-torch environment can still be told
     which wheel to install.
     """
+    binary = find_nvidia_smi()
+    if binary is None:
+        return None, None
+
     try:
         out = subprocess.run(
-            ["nvidia-smi"], capture_output=True, text=True, timeout=30, check=False
+            [binary], capture_output=True, text=True, timeout=30, check=False
         ).stdout
-    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError):
         return None, None
 
     driver = None
@@ -123,8 +154,12 @@ def report_interpreter() -> list[str]:
 def report_driver(driver: str | None, driver_cuda: tuple[int, int] | None) -> list[str]:
     """Print driver details; return warnings if it can't support this GPU."""
     if driver is None and driver_cuda is None:
-        print("driver   nvidia-smi not found - no NVIDIA driver visible")
-        return ["nvidia-smi not found; a CUDA run needs the NVIDIA driver installed"]
+        print("driver   nvidia-smi not found - cannot read driver CUDA version")
+        return [
+            "nvidia-smi not found on PATH or in the usual install dirs. If you do have "
+            f"an NVIDIA GPU, wheel advice below falls back to {recommend_wheel(None)} "
+            "(the sm_120 floor) and may be older than your driver can run"
+        ]
 
     print(f"driver   {driver or 'unknown'}  supports CUDA up to {format_cuda(driver_cuda)}")
 
@@ -167,7 +202,8 @@ def report_torch(
     import torch
 
     warnings: list[str] = []
-    hint = install_hint(driver_cuda)
+    # We only get here with torch importable, so any fix means replacing it.
+    hint = install_hint(driver_cuda, replace=True)
 
     try:
         wheel_cuda: tuple[int, int] | None = tuple(  # type: ignore[assignment]

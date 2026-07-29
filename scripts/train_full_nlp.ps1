@@ -35,6 +35,7 @@ param(
     [switch] $SkipEval,
     [switch] $StrictGates,
     [switch] $CheckOnly,
+    [switch] $AllowCpu,
     [switch] $DryRun
 )
 
@@ -100,6 +101,7 @@ if ($SkipExport)           { $CliArgs += '--skip-export' }
 if ($SkipEval)             { $CliArgs += '--skip-eval' }
 if ($StrictGates)          { $CliArgs += '--strict-gates' }
 if ($CheckOnly)            { $CliArgs += '--check-only' }
+if ($AllowCpu)             { $CliArgs += '--allow-cpu' }
 if ($DryRun)               { $CliArgs += '--dry-run' }
 
 $CliArgs += @('--only')
