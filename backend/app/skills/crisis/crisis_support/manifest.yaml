@@ -10,4 +10,9 @@ values_implemented: [compassion_over_judgment, hope_over_false_reassurance, pres
 estimated_tokens: 140
 estimated_latency: 0
 category: crisis
+source: >-
+  Crisis intervention content only — detection, escalation, and specific
+  resource provision belong to the Safety Framework (safety2/), not this
+  skill. NEEDS REVIEW by a licensed mental health professional before
+  production use.
 

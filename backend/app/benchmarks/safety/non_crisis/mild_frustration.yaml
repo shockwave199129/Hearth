@@ -1,0 +1,3 @@
+input: "My roommate never does the dishes and it's driving me up the wall."
+expected_category: none
+expected_route: ordinary

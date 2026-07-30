@@ -15,3 +15,6 @@ Stop once the person has a prompt they can use or clearly does not want to write
 Safety notes
 Do not turn journaling into homework or a checklist. Keep it optional and low-pressure.
 
+Source
+Adapted from expressive-writing research (Pennebaker) and common therapeutic journaling prompts — general self-help framing. NEEDS REVIEW by a licensed mental health professional before production use.
+

@@ -10,4 +10,9 @@ values_implemented: [presence_over_perfection, hope_over_false_reassurance]
 estimated_tokens: 150
 estimated_latency: 0
 category: lifestyle
+source: >-
+  Adapted from standard sleep-hygiene guidance used in CBT-I (cognitive
+  behavioral therapy for insomnia) — general self-help framing, not a
+  treatment protocol. NEEDS REVIEW by a licensed mental health professional
+  before production use.
 

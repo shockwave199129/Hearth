@@ -7,6 +7,7 @@ models → ``available=False`` and workers fail-soft to unknown / zeros.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from dataclasses import dataclass
@@ -93,6 +94,12 @@ class OnnxClassifier:
         self._pad_id = 0
         self._sessions: dict[str, Any] = {}
         self._label_meta: dict[str, dict[str, Any]] = {}
+        # "full": each task session is a full encoder+head graph (input_ids,
+        # attention_mask). "head_only": one shared encoder session (output
+        # "pooled") + per-task head sessions (input "pooled") — see
+        # hearth_ai's export_all_shared_encoder / nlp-track plan item.
+        self._graph_kind = "full"
+        self._encoder_session: Any = None
         self._init()
 
     def _init(self) -> None:
@@ -106,7 +113,25 @@ class OnnxClassifier:
             logger.warning("NLP deps missing (%s) — classifiers disabled", exc)
             return
 
+        manifest_path = self.models_dir / "manifest.json"
+        manifest: dict[str, Any] = {}
+        if manifest_path.is_file():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except Exception:
+                logger.exception("Failed to parse manifest.json at %s", manifest_path)
+        self._graph_kind = manifest.get("graph_kind", "full")
+
         tok_path = self.models_dir / "tokenizer.json"
+        expected_sha = manifest.get("tokenizer_sha256")
+        if expected_sha:
+            actual_sha = hashlib.sha256(tok_path.read_bytes()).hexdigest() if tok_path.is_file() else None
+            if actual_sha != expected_sha:
+                logger.error(
+                    "tokenizer.json sha256 mismatch (manifest=%s, on-disk=%s) — "
+                    "models_dir may be a partial/corrupt export bundle",
+                    expected_sha, actual_sha,
+                )
         try:
             self._tokenizer = Tokenizer.from_file(str(tok_path))
             self._pad_id = self._tokenizer.token_to_id("<pad>") or 0
@@ -123,6 +148,19 @@ class OnnxClassifier:
             logger.exception("Failed to load NLP tokenizer from %s", tok_path)
             return
 
+        if self._graph_kind == "head_only":
+            encoder_path = self.models_dir / "encoder" / "model.onnx"
+            if not encoder_path.is_file():
+                logger.warning("graph_kind=head_only but missing shared encoder at %s", encoder_path)
+                return
+            try:
+                self._encoder_session = ort.InferenceSession(
+                    str(encoder_path), providers=["CPUExecutionProvider"]
+                )
+            except Exception:
+                logger.exception("Failed to load shared encoder ONNX session")
+                return
+
         for task in ("emotion", "intent", "memory", "relationship", "strategy"):
             onnx_path = self.models_dir / task / "model.onnx"
             labels_path = self.models_dir / task / "labels.json"
@@ -138,11 +176,12 @@ class OnnxClassifier:
             except Exception:
                 logger.exception("Failed to load ONNX session for %s", task)
 
-        self.available = bool(self._sessions)
+        self.available = bool(self._sessions) and (self._graph_kind != "head_only" or self._encoder_session is not None)
         if self.available:
             logger.info(
-                "NLP classifiers ready from %s (%s)",
+                "NLP classifiers ready from %s graph_kind=%s (%s)",
                 self.models_dir,
+                self._graph_kind,
                 ", ".join(sorted(self._sessions)),
             )
 
@@ -154,19 +193,56 @@ class OnnxClassifier:
         mask = np.asarray([enc.attention_mask], dtype=np.int64)
         return ids, mask
 
-    def _run(self, task: str, text: str) -> list[np.ndarray] | None:
+    def _encode_pooled(self, text: str) -> np.ndarray | None:
+        if self._encoder_session is None or self._tokenizer is None:
+            return None
+        try:
+            ids, mask = self.encode(text)
+            return self._encoder_session.run(None, {"input_ids": ids, "attention_mask": mask})[0]
+        except Exception:
+            logger.exception("Shared encoder inference failed")
+            return None
+
+    def _run(self, task: str, text: str, *, pooled: np.ndarray | None = None) -> list[np.ndarray] | None:
         session = self._sessions.get(task)
         if session is None or self._tokenizer is None:
             return None
         try:
+            if self._graph_kind == "head_only":
+                if pooled is None:
+                    pooled = self._encode_pooled(text)
+                if pooled is None:
+                    return None
+                return session.run(None, {"pooled": pooled})
             ids, mask = self.encode(text)
             return session.run(None, {"input_ids": ids, "attention_mask": mask})
         except Exception:
             logger.exception("ONNX inference failed for %s", task)
             return None
 
-    def predict_emotion(self, text: str) -> EmotionPrediction:
-        outs = self._run("emotion", text)
+    def predict_all(self, text: str, tasks: list[str]) -> dict[str, Any]:
+        """Run every requested task off ONE shared-encoder pass when
+        graph_kind=='head_only' (the nlp-track perf win); falls back to one
+        independent full-graph pass per task otherwise — same results
+        either way, just not the encoder-sharing speedup."""
+        pooled = self._encode_pooled(text) if self._graph_kind == "head_only" else None
+        dispatch = {
+            "emotion": self.predict_emotion,
+            "intent": self.predict_intent,
+            "memory": self.predict_memory,
+            "relationship": self.predict_relationship,
+            "strategy": self.predict_strategy,
+        }
+        results: dict[str, Any] = {}
+        for task in tasks:
+            fn = dispatch.get(task)
+            if fn is None:
+                continue
+            results[task] = fn(text, pooled=pooled) if self._graph_kind == "head_only" else fn(text)
+        return results
+
+    def predict_emotion(self, text: str, *, pooled: np.ndarray | None = None) -> EmotionPrediction:
+        outs = self._run("emotion", text, pooled=pooled)
         if outs is None:
             return EmotionPrediction("unknown", 0.0, [], {})
         logits = np.asarray(outs[0][0], dtype=np.float64)
@@ -193,8 +269,8 @@ class OnnxClassifier:
         best = max(hearth_scores, key=hearth_scores.get)
         return EmotionPrediction(best, hearth_scores[best], raw, scores)
 
-    def predict_intent(self, text: str) -> IntentPrediction:
-        outs = self._run("intent", text)
+    def predict_intent(self, text: str, *, pooled: np.ndarray | None = None) -> IntentPrediction:
+        outs = self._run("intent", text, pooled=pooled)
         if outs is None:
             return IntentPrediction("unknown", 0.0, {})
         logits = np.asarray(outs[0][0], dtype=np.float64)
@@ -209,8 +285,8 @@ class OnnxClassifier:
             return IntentPrediction("unknown", conf, scores)
         return IntentPrediction(best, conf, scores)
 
-    def predict_memory(self, text: str) -> MemoryPrediction:
-        outs = self._run("memory", text)
+    def predict_memory(self, text: str, *, pooled: np.ndarray | None = None) -> MemoryPrediction:
+        outs = self._run("memory", text, pooled=pooled)
         types = list(
             self._label_meta.get("memory", {}).get("types") or label_defaults.MEMORY_TYPES
         )
@@ -232,8 +308,8 @@ class OnnxClassifier:
             type_scores=type_scores,
         )
 
-    def predict_relationship(self, text: str) -> RelationshipPrediction:
-        outs = self._run("relationship", text)
+    def predict_relationship(self, text: str, *, pooled: np.ndarray | None = None) -> RelationshipPrediction:
+        outs = self._run("relationship", text, pooled=pooled)
         if outs is None:
             return RelationshipPrediction(0.0, 0.0, 0.0, 0.0)
         signals = np.asarray(outs[0][0], dtype=np.float64).reshape(-1)
@@ -243,8 +319,8 @@ class OnnxClassifier:
             vals.append(0.0)
         return RelationshipPrediction(vals[0], vals[1], vals[2], vals[3])
 
-    def predict_strategy(self, text: str) -> StrategyPrediction:
-        outs = self._run("strategy", text)
+    def predict_strategy(self, text: str, *, pooled: np.ndarray | None = None) -> StrategyPrediction:
+        outs = self._run("strategy", text, pooled=pooled)
         if outs is None:
             return StrategyPrediction("listen", 0.0, {})
         logits = np.asarray(outs[0][0], dtype=np.float64)

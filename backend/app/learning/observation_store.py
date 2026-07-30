@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import uuid
 from dataclasses import dataclass
@@ -12,7 +13,38 @@ from pathlib import Path
 from app.config import DATA_DIR
 
 LEARNING_DB_PATH = DATA_DIR / "hearth_learning.duckdb"
-LEARNING_SQLITE_FALLBACK_PATH = DATA_DIR / "hearth_learning.sqlite3"
+LEARNING_SQLITE_FALLBACK_SUFFIX = ".sqlite3"
+
+# observation_type is interpolated into a per-type table name (DuckDB has no
+# parameter binding for identifiers) — restrict it to a safe identifier
+# shape so it can never be used to inject arbitrary SQL.
+_SAFE_OBSERVATION_TYPE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def _table_name(observation_type: str) -> str:
+    if not _SAFE_OBSERVATION_TYPE.match(observation_type):
+        raise ValueError(f"unsafe observation_type: {observation_type!r}")
+    return f"{observation_type}_observations"
+
+
+# Book Vol 7 Ch3/Ch7, Invariant 4: "no Trust observation may derive from
+# message frequency or session length" — enforced here, at the schema
+# level, not merely documented. Every "relationship" observation tagged to
+# one of these subject_ids must carry a `derivation` in its context drawn
+# from this allowlist; anything else (including a bare "message_frequency"
+# or "session_length" tag) is a hard append-time failure.
+TRUST_SUBJECTS = {"general_trust", "vulnerability_trust", "advice_trust", "consistency_confidence"}
+VALID_TRUST_DERIVATIONS = {
+    "consistency_observation",
+    "disclosure_depth",
+    "repair_outcome",
+    "return_behavior",
+    "explicit_correction",
+}
+
+
+class InvalidTrustObservationError(ValueError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -41,10 +73,15 @@ class ObservationStore:
         except Exception:
             self._duckdb = None
 
+    def _fallback_path(self) -> Path:
+        return self.path.with_suffix(LEARNING_SQLITE_FALLBACK_SUFFIX)
+
     def _connect(self):
         if self._duckdb is not None:
             return self._duckdb.connect(str(self.path))
-        conn = sqlite3.connect(LEARNING_SQLITE_FALLBACK_PATH)
+        fallback_path = self._fallback_path()
+        fallback_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(fallback_path)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS observations (
@@ -62,6 +99,14 @@ class ObservationStore:
         return conn
 
     def append(self, observation_type: str, subject_id: str, value: float, context: dict | None, source_module: str) -> Observation:
+        if observation_type == "relationship" and subject_id in TRUST_SUBJECTS:
+            derivation = (context or {}).get("derivation")
+            if derivation not in VALID_TRUST_DERIVATIONS:
+                raise InvalidTrustObservationError(
+                    f"Trust observation for {subject_id!r} must carry a context['derivation'] from "
+                    f"{sorted(VALID_TRUST_DERIVATIONS)} (got {derivation!r}) — Book Vol 7 Ch3/Invariant 4: "
+                    "no Trust observation may derive from message frequency or session length."
+                )
         obs = Observation(
             id=str(uuid.uuid4()),
             timestamp=_now_iso(),
@@ -74,9 +119,10 @@ class ObservationStore:
         conn = self._connect()
         try:
             if self._duckdb is not None:
+                table = _table_name(observation_type)
                 conn.execute(
                     f"""
-                    CREATE TABLE IF NOT EXISTS {observation_type}_observations (
+                    CREATE TABLE IF NOT EXISTS {table} (
                         id VARCHAR PRIMARY KEY,
                         timestamp TIMESTAMP,
                         subject_id VARCHAR,
@@ -87,7 +133,7 @@ class ObservationStore:
                     """
                 )
                 conn.execute(
-                    f"INSERT INTO {observation_type}_observations VALUES (?, ?, ?, ?, ?, ?)",
+                    f"INSERT INTO {table} VALUES (?, ?, ?, ?, ?, ?)",
                     [obs.id, obs.timestamp, obs.subject_id, obs.value, json.dumps(obs.context), obs.source_module],
                 )
             else:
@@ -104,16 +150,23 @@ class ObservationStore:
         conn = self._connect()
         try:
             if self._duckdb is not None:
-                rows = conn.execute(
-                    f"""
-                    SELECT id, timestamp, subject_id, value, context, source_module
-                    FROM {observation_type}_observations
-                    WHERE subject_id = ?
-                    ORDER BY timestamp DESC
-                    LIMIT ?
-                    """,
-                    [subject_id, limit],
-                ).fetchall()
+                table = _table_name(observation_type)
+                exists = conn.execute(
+                    "SELECT 1 FROM information_schema.tables WHERE table_name = ?", [table]
+                ).fetchone()
+                if exists is None:
+                    rows = []
+                else:
+                    rows = conn.execute(
+                        f"""
+                        SELECT id, timestamp, subject_id, value, context, source_module
+                        FROM {table}
+                        WHERE subject_id = ?
+                        ORDER BY timestamp DESC
+                        LIMIT ?
+                        """,
+                        [subject_id, limit],
+                    ).fetchall()
             else:
                 rows = conn.execute(
                     """

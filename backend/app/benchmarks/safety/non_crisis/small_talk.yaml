@@ -1,0 +1,3 @@
+input: "Not much going on today, just relaxing and watching a show."
+expected_category: none
+expected_route: ordinary

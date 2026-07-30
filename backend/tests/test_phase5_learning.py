@@ -51,5 +51,5 @@ def test_evaluation_worker_writes_observations(tmp_path):
     worker = EvaluationWorker(store)
     result = worker.evaluate("u1", "hello", "I’m here with you.")
     assert result.invariant_score > 0.0
-    assert store.latest("communication", "evaluation_invariant")
+    assert store.latest("evaluation", "invariant_adherence")
 

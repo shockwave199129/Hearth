@@ -53,32 +53,37 @@ class NlpWorkerRunner:
 
         mind_state.nlp_available = True
 
-        if "emotion" in workers:
-            pred = self.classifier.predict_emotion(transcript)
+        # One call: runs the shared encoder once for every requested task
+        # when the loaded models use graph_kind=="head_only" (nlp-track),
+        # instead of one full encoder+head pass per task.
+        preds = self.classifier.predict_all(transcript, workers)
+
+        if "emotion" in preds:
+            pred = preds["emotion"]
             mind_state.emotion = pred.emotion
             mind_state.emotion_confidence = round(pred.confidence, 4)
 
-        if "intent" in workers:
-            pred = self.classifier.predict_intent(transcript)
+        if "intent" in preds:
+            pred = preds["intent"]
             mind_state.intent = pred.intent
             mind_state.intent_confidence = round(pred.confidence, 4)
             if pred.intent != "unknown" and pred.confidence >= 0.25:
                 mind_state.goal = INTENT_TO_GOAL.get(pred.intent, mind_state.goal)
 
-        if "memory" in workers:
-            pred = self.classifier.predict_memory(transcript)
+        if "memory" in preds:
+            pred = preds["memory"]
             mind_state.memory_store = pred.store
             mind_state.memory_type = pred.memory_type if pred.store else None
             mind_state.memory_importance = round(pred.importance, 4)
 
-        if "relationship" in workers:
-            pred = self.classifier.predict_relationship(transcript)
+        if "relationship" in preds:
+            pred = preds["relationship"]
             mind_state.relationship_trust_delta = round(pred.trust_delta, 4)
             mind_state.relationship_vulnerability = round(pred.vulnerability, 4)
             mind_state.relationship_openness = round(pred.openness, 4)
             mind_state.relationship_comfort = round(pred.comfort, 4)
 
-        if "strategy" in workers:
-            pred = self.classifier.predict_strategy(transcript)
+        if "strategy" in preds:
+            pred = preds["strategy"]
             mind_state.strategy_hint = pred.strategy
             mind_state.strategy_confidence = round(pred.confidence, 4)

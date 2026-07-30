@@ -10,4 +10,9 @@ values_implemented: [presence_over_perfection, compassion_over_judgment]
 estimated_tokens: 160
 estimated_latency: 0
 category: emotional_regulation
+source: >-
+  Adapted from DBT distress-tolerance skills (Linehan) and CBT grounding
+  exercises used in anxiety treatment — general self-help framing, not a
+  clinical protocol. NEEDS REVIEW by a licensed mental health professional
+  before production use.
 

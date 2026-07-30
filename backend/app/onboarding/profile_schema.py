@@ -16,6 +16,7 @@ class UserProfile(BaseModel):
     companion_name: str = "Companion"
     communication_formality: str = "casual"    # "casual" | "neutral" | "formal"
     response_length: str = "balanced"    # "short" | "balanced" | "long"
+    emoji_usage: str = "minimal"    # "none" | "minimal" | "frequent" — Book Vol 2 Ch 7 CommunicationPreferences
     relationship_general_trust: float = 0.0
     relationship_vulnerability_trust: float = 0.0
     relationship_advice_trust: float = 0.0
@@ -40,6 +41,11 @@ class UserProfile(BaseModel):
     emergency_contact_name: str | None = None
     emergency_contact_method: str | None = None    # "sms" | "email"
     emergency_contact_value: str | None = None
+    # Optional, user-provided region code (e.g. "us", "uk") used to select
+    # regionally-relevant safety resources (Book Vol 6 Ch 7) — falls back to
+    # global resources when unset, never presenting a region-specific
+    # resource as universally applicable.
+    region: str | None = None
     created_at: datetime
 
 
@@ -54,6 +60,7 @@ class OnboardingRequest(BaseModel):
     companion_name: str = "Companion"
     communication_formality: str = "casual"
     response_length: str = "balanced"
+    emoji_usage: str = "minimal"
     relationship_general_trust: float = 0.0
     relationship_vulnerability_trust: float = 0.0
     relationship_advice_trust: float = 0.0
@@ -67,3 +74,4 @@ class OnboardingRequest(BaseModel):
     emergency_contact_name: str | None = None
     emergency_contact_method: str | None = None
     emergency_contact_value: str | None = None
+    region: str | None = None

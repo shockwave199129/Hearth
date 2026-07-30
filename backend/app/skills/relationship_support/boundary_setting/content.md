@@ -15,3 +15,6 @@ Stop once the person has wording that feels usable and the boundary itself is cl
 Safety notes
 Do not push for confrontation when the person is not ready. Keep the tone relationship-aware.
 
+Source
+Adapted from assertiveness-communication frameworks used in interpersonal-effectiveness training (Linehan's DBT "DEAR MAN" skill) — general self-help framing. NEEDS REVIEW by a licensed mental health professional before production use.
+

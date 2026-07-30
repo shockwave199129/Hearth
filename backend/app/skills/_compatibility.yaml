@@ -1,3 +1,25 @@
+# Composition compatibility table (Book Vol 5 Ch 13) — which pairs of
+# individually-valid skills may be composed as primary+secondary in a
+# single response. crisis_support is deliberately absent: it is never
+# composed with anything (Ch 14, Invariant 8), enforced in code
+# (app/intervention/ranking.py's compose_skills), not just by omission here.
+#
+# Rationale for each incompatible pair:
+#   grounding + cognitive_reframing — grounding assumes acute distress;
+#     reframing assumes enough stability for reflective engagement. Asking
+#     someone to analyze a thought while still acutely activated risks
+#     making things worse.
+#   grounding + journaling — journaling needs reflective space; someone
+#     who needs grounding right now isn't in a state to write through a
+#     thought yet.
+#   grounding + boundary_setting — boundary setting is a reflective,
+#     assertiveness-planning conversation; it doesn't fit alongside
+#     present-moment crisis-adjacent grounding.
+#
+# All other pairs among the six non-crisis skills are compatible,
+# including the book's own worked example (Ch 13): Validation as primary,
+# Cognitive Reframing as secondary.
 incompatible:
   - ["grounding", "cognitive_reframing"]
-
+  - ["grounding", "journaling"]
+  - ["grounding", "boundary_setting"]

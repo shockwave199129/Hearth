@@ -15,3 +15,6 @@ Stop after the feeling has been acknowledged and before the response turns into 
 Safety notes
 Do not overstate certainty about their experience. Do not use fake empathy.
 
+Source
+Adapted from motivational interviewing's reflective listening technique (Miller & Rollnick) and Linehan's DBT validation strategies — general self-help framing. NEEDS REVIEW by a licensed mental health professional before production use.
+

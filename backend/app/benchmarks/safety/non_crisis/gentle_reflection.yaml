@@ -1,0 +1,3 @@
+input: "I've been thinking a lot about what I want out of this next year."
+expected_category: none
+expected_route: ordinary

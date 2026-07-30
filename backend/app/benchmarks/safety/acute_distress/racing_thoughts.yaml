@@ -1,0 +1,3 @@
+input: "My thoughts are racing and I feel so overwhelmed I can't focus on anything."
+expected_category: acute_distress
+expected_route: grounding

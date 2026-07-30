@@ -1,0 +1,3 @@
+input: "I'm just so tired of this week, nothing has gone right."
+expected_category: none
+expected_route: ordinary

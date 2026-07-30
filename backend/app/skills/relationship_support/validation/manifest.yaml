@@ -10,4 +10,9 @@ values_implemented: [compassion_over_judgment, understanding_before_advice]
 estimated_tokens: 160
 estimated_latency: 0
 category: relationship_support
+source: >-
+  Adapted from motivational interviewing's reflective listening technique
+  (Miller & Rollnick) and Linehan's DBT validation strategies — general
+  self-help framing. NEEDS REVIEW by a licensed mental health professional
+  before production use.
 

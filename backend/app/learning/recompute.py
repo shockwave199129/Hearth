@@ -1,12 +1,46 @@
-"""EWMA recomputation pipeline."""
+"""Applies Book Volume 7's generic Recomputation Pipeline (Chapter 4) to
+Communication Traits (Ch 5), Skill Affinity (Ch 6), and Trust (Ch 7),
+writing results to Profile's cached fields — the only interface the live
+runtime ever reads; it never queries the observation store directly.
+
+Development level and Attachment signals are NOT computed here — those are
+computed and persisted directly against `RelationshipProfile` by
+`app.growth.engine` (using this same pipeline), which is the single source
+of truth Phase 3's Intervention Engine and Phase 4's Safety Worker both
+read. This module writes only the flat, fast-access Profile fields Volume 3
+Ch 3 describes as the runtime cache; RelationshipProfile is the fuller,
+versioned object."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from app.cognitive.communication import NEUTRAL_TRAIT, TRAIT_KEYS
+from app.learning.coldstart import blend
 from app.learning.observation_store import ObservationStore
+from app.learning.pipeline import recompute_value
 from app.onboarding.profile_store import get_profile, update_learning_state, update_relationship_state
+
+COMMUNICATION_TRAIT_ALPHA = 0.05  # Ch 5: low, for long-term stability.
+SKILL_AFFINITY_ALPHA = 0.1  # Ch 6: moderate — skill fit can genuinely shift.
+TRUST_ALPHA = 0.06
+NEUTRAL_AFFINITY = 0.5
+COLD_START_SAMPLE_THRESHOLD = 8  # Ch 11's confidence_curve `k`.
+
+TRUST_SUBSCORES = ("general_trust", "vulnerability_trust", "advice_trust", "consistency_confidence")
+
+# Ch 6's cross-affinity cold-start prior: which Communication Trait informs
+# a skill's *initial* affinity estimate when it has too little observation
+# history of its own. Skills with no strong related trait (grounding,
+# sleep_hygiene, crisis_support) fall back to the plain neutral population
+# default instead.
+SKILL_AFFINITY_TRAIT_PRIOR: dict[str, str] = {
+    "cognitive_reframing": "likes_direct_advice",
+    "boundary_setting": "likes_direct_advice",
+    "validation": "likes_reflection",
+    "journaling": "likes_reflection",
+}
 
 
 @dataclass(frozen=True)
@@ -14,17 +48,15 @@ class RecomputeResult:
     communication_traits: dict[str, float]
     skill_affinity: dict[str, float]
     trust: dict[str, float]
-    development_level: str
-    attachment_signal: float
     updated_at: datetime
 
 
-def _ewma(current: float, latest: float, alpha: float) -> float:
-    return round(alpha * latest + (1.0 - alpha) * current, 3)
-
-
-def _clamp(value: float) -> float:
-    return max(0.0, min(1.0, value))
+def _trait_prior_to_affinity_prior(trait_value: float) -> float:
+    """Maps a 0..1 trait value onto a plausible 0.3..0.7 starting affinity
+    range — a strong prior nudges the cold-start estimate, but even a
+    maximal trait value shouldn't assert near-certain affinity for a skill
+    that's never actually been used."""
+    return 0.3 + 0.4 * trait_value
 
 
 def recompute_all(user_id: str, store: ObservationStore | None = None) -> RecomputeResult:
@@ -34,20 +66,27 @@ def recompute_all(user_id: str, store: ObservationStore | None = None) -> Recomp
         raise ValueError("profile not found")
 
     communication_traits = dict(profile.communication_traits)
-    for trait in ("likes_reflection", "likes_direct_advice", "prefers_questions", "interruption_tolerance", "emotional_openness"):
-        current = communication_traits.get(trait, 0.5 if trait != "interruption_tolerance" else 0.2)
-        observations = store.latest("communication", trait, 20)
-        if observations:
-            latest = observations[0].value
-            communication_traits[trait] = _ewma(current, latest, 0.05)
+    for trait in TRAIT_KEYS:
+        current = communication_traits.get(trait, NEUTRAL_TRAIT)
+        result = recompute_value(store, "communication", trait, current=current, alpha=COMMUNICATION_TRAIT_ALPHA)
+        if result.changed:
+            communication_traits[trait] = result.value
 
     skill_affinity = dict(profile.skill_affinity)
     for skill_id in ["validation", "grounding", "journaling", "cognitive_reframing", "boundary_setting", "sleep_hygiene", "crisis_support"]:
-        current = skill_affinity.get(skill_id, 0.5)
-        observations = store.latest("skill", skill_id, 20)
-        if observations:
-            latest = observations[0].value
-            skill_affinity[skill_id] = _ewma(current, latest, 0.1)
+        current = skill_affinity.get(skill_id, NEUTRAL_AFFINITY)
+        result = recompute_value(store, "skill", skill_id, current=current, alpha=SKILL_AFFINITY_ALPHA)
+        if result.sample_size == 0:
+            continue
+        if result.sample_size < COLD_START_SAMPLE_THRESHOLD:
+            # Ch 11's cold-start blend: weight given to the actually-observed
+            # value grows smoothly with sample_size, rather than switching
+            # abruptly from "prior" to "observed" at a fixed cutoff.
+            trait_id = SKILL_AFFINITY_TRAIT_PRIOR.get(skill_id)
+            prior = _trait_prior_to_affinity_prior(communication_traits[trait_id]) if trait_id else None
+            skill_affinity[skill_id] = blend(NEUTRAL_AFFINITY, prior, result.value, result.sample_size, k=COLD_START_SAMPLE_THRESHOLD)
+        elif result.changed:
+            skill_affinity[skill_id] = result.value
 
     trust = {
         "general_trust": profile.relationship_general_trust,
@@ -55,29 +94,19 @@ def recompute_all(user_id: str, store: ObservationStore | None = None) -> Recomp
         "advice_trust": profile.relationship_advice_trust,
         "consistency_confidence": profile.relationship_consistency_confidence,
     }
-    for key in list(trust):
-        observations = store.latest("relationship", key, 20)
-        if observations:
-            trust[key] = _ewma(trust[key], observations[0].value, 0.06)
-            trust[key] = _clamp(trust[key])
+    for subscore in TRUST_SUBSCORES:
+        # Trust genuinely starts at zero and has no prior (Ch 11) — no
+        # cold-start blend here, just the plain pipeline fold.
+        result = recompute_value(store, "relationship", subscore, current=trust[subscore], alpha=TRUST_ALPHA)
+        if result.changed:
+            trust[subscore] = result.value
 
-    attachment_signal = profile.relationship_general_trust * 0.2
-    attachment_obs = store.latest("relationship", "attachment_signal", 20)
-    if attachment_obs:
-        attachment_signal = _clamp(_ewma(attachment_signal, attachment_obs[0].value, 0.2))
-
-    conversation_count = max(1, len(store.latest("communication", "likes_reflection", 100)))
-    depth_score = trust["general_trust"] + trust["vulnerability_trust"] + trust["consistency_confidence"]
-    if depth_score > 1.8 and conversation_count >= 12:
-        development_level = "deep"
-    elif depth_score > 1.2 and conversation_count >= 6:
-        development_level = "growing"
-    elif depth_score > 0.6:
-        development_level = "forming"
-    else:
-        development_level = "early"
-
-    update_learning_state(user_id, communication_traits=communication_traits, skill_affinity=skill_affinity, evaluation_last_run_at=datetime.now(timezone.utc))
+    update_learning_state(
+        user_id,
+        communication_traits=communication_traits,
+        skill_affinity=skill_affinity,
+        evaluation_last_run_at=datetime.now(timezone.utc),
+    )
     update_relationship_state(
         user_id,
         relationship_general_trust=trust["general_trust"],
@@ -91,8 +120,5 @@ def recompute_all(user_id: str, store: ObservationStore | None = None) -> Recomp
         communication_traits=communication_traits,
         skill_affinity=skill_affinity,
         trust=trust,
-        development_level=development_level,
-        attachment_signal=attachment_signal,
         updated_at=datetime.now(timezone.utc),
     )
-

@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     companion_name TEXT NOT NULL,
     communication_formality TEXT NOT NULL DEFAULT 'casual',
     response_length TEXT NOT NULL DEFAULT 'balanced',
+    emoji_usage TEXT NOT NULL DEFAULT 'minimal',
     relationship_general_trust REAL NOT NULL DEFAULT 0.0,
     relationship_vulnerability_trust REAL NOT NULL DEFAULT 0.0,
     relationship_advice_trust REAL NOT NULL DEFAULT 0.0,
@@ -32,6 +33,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     emergency_contact_name TEXT,
     emergency_contact_method TEXT,
     emergency_contact_value TEXT,
+    region TEXT,
     created_at TEXT NOT NULL
 );
 """
@@ -61,6 +63,18 @@ CHECKIN_SCHEMA = """
 CREATE TABLE IF NOT EXISTS checkin (
     user_id TEXT PRIMARY KEY,
     last_checkin_at TEXT
+);
+"""
+
+# Book Volume 3's full RelationshipProfile (app/relationship/state.py) — the
+# versioned, consolidated object (Trust, Attachment, Development, Boundaries,
+# Life Model, Shared History), distinct from the flat cached trust columns
+# on `profiles` above. One row per profile; only the Growth Engine writes.
+RELATIONSHIP_PROFILES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS relationship_profiles (
+    user_id TEXT PRIMARY KEY,
+    profile_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 """
 
@@ -154,6 +168,7 @@ _PROFILES_TEXT_INPUT_COLUMNS = {
     "speak_replies": "INTEGER NOT NULL DEFAULT 1",
     "communication_formality": "TEXT NOT NULL DEFAULT 'casual'",
     "response_length": "TEXT NOT NULL DEFAULT 'balanced'",
+    "emoji_usage": "TEXT NOT NULL DEFAULT 'minimal'",
     "relationship_general_trust": "REAL NOT NULL DEFAULT 0.0",
     "relationship_vulnerability_trust": "REAL NOT NULL DEFAULT 0.0",
     "relationship_advice_trust": "REAL NOT NULL DEFAULT 0.0",
@@ -163,6 +178,7 @@ _PROFILES_TEXT_INPUT_COLUMNS = {
     "communication_traits_json": "TEXT NOT NULL DEFAULT '{}'",
     "skill_affinity_json": "TEXT NOT NULL DEFAULT '{}'",
     "evaluation_last_run_at": "TEXT",
+    "region": "TEXT",
 }
 
 
@@ -231,6 +247,7 @@ def get_connection(db_path: Path):
     conn.execute(CRISIS_EVENTS_SCHEMA)
     conn.execute(ESCALATIONS_SCHEMA)
     conn.execute(CHAT_HISTORY_SCHEMA)
+    conn.execute(RELATIONSHIP_PROFILES_SCHEMA)
     _ensure_columns(conn, "profiles", _PROFILES_TEXT_INPUT_COLUMNS)
     conn.commit()
     _migrate_legacy_singleton_profile(conn)

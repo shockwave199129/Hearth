@@ -43,6 +43,7 @@ class SkillManifest:
     estimated_latency: int
     deprecated: bool
     category: str
+    source: str = ""
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,7 @@ def _validate_manifest(meta: dict, *, skill_id: str, category: str) -> SkillMani
         estimated_latency=int(meta.get("estimated_latency", 0)),
         deprecated=bool(meta.get("deprecated", False)),
         category=meta.get("category", category),
+        source=str(meta.get("source", "")),
     )
 
 
@@ -100,7 +102,7 @@ def _parse_structured_skill(manifest_path: Path, content_path: Path, *, category
         title=manifest.name,
         tags=manifest.tags,
         summary=manifest.description,
-        source=manifest.description,
+        source=manifest.source or manifest.description,
         content=content,
         manifest=manifest,
         path=manifest_path.parent,
@@ -126,6 +128,7 @@ def _parse_legacy_file(path: Path) -> Skill:
         estimated_latency=0,
         deprecated=False,
         category="legacy",
+        source=str(meta.get("source", "")),
     )
     return Skill(id=skill_id, title=meta["title"], tags=manifest.tags, summary=meta["summary"], source=meta.get("source", ""), content=content, manifest=manifest, path=path)
 

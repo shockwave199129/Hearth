@@ -1,12 +1,12 @@
 {
   "hearth_config": {
-    "vocab_size": 3955,
-    "max_seq_len": 64,
-    "hidden_size": 128,
-    "num_layers": 4,
-    "num_heads": 4,
-    "head_dim": 32,
-    "ffn_hidden_size": 256,
+    "vocab_size": 32000,
+    "max_seq_len": 128,
+    "hidden_size": 512,
+    "num_layers": 16,
+    "num_heads": 8,
+    "head_dim": 64,
+    "ffn_hidden_size": 2048,
     "dropout": 0.1,
     "rope_theta": 10000.0,
     "rms_norm_eps": 1e-06,
@@ -22,5 +22,5 @@
     "logits"
   ],
   "opset": 17,
-  "parity_max_abs_diff": 1.430511474609375e-06
+  "parity_max_abs_diff": 4.76837158203125e-06
 }

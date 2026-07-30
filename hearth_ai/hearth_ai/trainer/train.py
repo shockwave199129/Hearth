@@ -286,3 +286,203 @@ class Trainer:
         ckpt = torch.load(path, map_location=self.device)
         self.model.load_state_dict(ckpt["model_state_dict"])
         return ckpt.get("epoch", 0)
+
+
+class MultiTaskTrainer:
+    """Joint trainer for ``HearthMultiTaskModel`` — one encoder shared by all
+    task heads, trained together so the encoder never diverges per task.
+
+    This is the failure mode ``train_all_full.py``'s sequential warm-start
+    chain has: each later head's fine-tuning only backprops its own task's
+    loss through the (copied) encoder, so nothing anchors it back to the
+    earlier tasks and the five encoders drift apart — measured cosine
+    similarity between task-encoder pooled embeddings on the same input can
+    be as low as ~0.05. Training every head against the *same* encoder
+    instance every step, with every task's gradient landing on it every
+    step, is what keeps the heads' embedding space aligned.
+
+    Every step pulls one batch per task (from an infinitely-cycling loader
+    per task, since dataset sizes differ), runs the shared encoder once per
+    task-batch, computes that task's loss, and backprops the mean of all
+    task losses in a single ``backward()`` before one optimizer step —
+    so every parameter update already reflects every task's gradient.
+    """
+
+    def __init__(
+        self,
+        model,
+        train_datasets: dict,
+        loss_fns: dict,
+        val_datasets: Optional[dict] = None,
+        pad_id: int = 0,
+        device: Optional[str] = None,
+        checkpoint_root: str = "checkpoints",
+        grad_clip: float = 1.0,
+        log_every: int = 0,
+    ):
+        unknown = set(train_datasets) - set(model.heads)
+        if unknown:
+            raise ValueError(f"train_datasets has tasks not in model.heads: {sorted(unknown)}")
+        self.model = model
+        self.tasks = list(train_datasets.keys())
+        self.train_datasets = train_datasets
+        self.val_datasets = val_datasets or {}
+        self.loss_fns = loss_fns
+        self.collate_fn = make_collate_fn(pad_id)
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.checkpoint_root = checkpoint_root
+        self.grad_clip = grad_clip
+        self.log_every = log_every
+        self.model.to(self.device)
+        os.makedirs(checkpoint_root, exist_ok=True)
+
+    def _to_device(self, label):
+        if isinstance(label, dict):
+            return {k: v.to(self.device, non_blocking=True) for k, v in label.items()}
+        return label.to(self.device, non_blocking=True)
+
+    def _cycle(self, loader):
+        while True:
+            for batch in loader:
+                yield batch
+
+    def _forward_task(self, task: str, batch) -> torch.Tensor:
+        input_ids = batch["input_ids"].to(self.device, non_blocking=True)
+        attention_mask = batch["attention_mask"].to(self.device, non_blocking=True)
+        label = self._to_device(batch["label"])
+        _, pooled = self.model.encoder(input_ids, attention_mask)
+        logits = self.model.heads[task](pooled)
+        if isinstance(logits, dict):
+            return self.loss_fns[task](logits, label)
+        return self.loss_fns[task](logits, label)
+
+    def _build_scheduler(self, optimizer, total_steps: int, warmup_ratio: float):
+        warmup_steps = max(1, int(total_steps * warmup_ratio))
+
+        def lr_lambda(step: int) -> float:
+            if step < warmup_steps:
+                return (step + 1) / warmup_steps
+            progress = (step - warmup_steps) / max(1, total_steps - warmup_steps)
+            return 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
+
+        return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+    def fit(
+        self,
+        epochs: int = 3,
+        batch_size: int = 16,
+        lr: float = 3e-4,
+        weight_decay: float = 0.01,
+        steps_per_epoch: Optional[int] = None,
+        warmup_ratio: float = 0.0,
+        early_stop_patience: int = 0,
+        num_workers: int = 0,
+    ) -> dict:
+        loaders = {
+            t: DataLoader(
+                ds, batch_size=batch_size, shuffle=True, collate_fn=self.collate_fn,
+                num_workers=num_workers, drop_last=True,
+            )
+            for t, ds in self.train_datasets.items()
+        }
+        steps_per_epoch = steps_per_epoch or max(len(l) for l in loaders.values())
+        iters = {t: self._cycle(l) for t, l in loaders.items()}
+
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
+        scheduler = None
+        if warmup_ratio > 0:
+            scheduler = self._build_scheduler(optimizer, steps_per_epoch * epochs, warmup_ratio)
+
+        print(
+            f"device={self.device} tasks={self.tasks} batch={batch_size} "
+            f"steps_per_epoch={steps_per_epoch}",
+            flush=True,
+        )
+
+        best_val = float("inf")
+        epochs_without_improvement = 0
+        last_train_losses: dict = {}
+
+        for epoch in range(1, epochs + 1):
+            self.model.train()
+            totals = {t: 0.0 for t in self.tasks}
+            started = time.perf_counter()
+
+            for step in range(1, steps_per_epoch + 1):
+                optimizer.zero_grad(set_to_none=True)
+                for t in self.tasks:
+                    batch = next(iters[t])
+                    loss = self._forward_task(t, batch)
+                    (loss / len(self.tasks)).backward()
+                    totals[t] += loss.item()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+                optimizer.step()
+                if scheduler is not None:
+                    scheduler.step()
+
+                if self.log_every and step % self.log_every == 0:
+                    elapsed = time.perf_counter() - started
+                    rate = step / max(elapsed, 1e-9)
+                    eta = (steps_per_epoch - step) / max(rate, 1e-9)
+                    avg = ", ".join(f"{t}={totals[t] / step:.4f}" for t in self.tasks)
+                    print(f"  e{epoch} step {step}/{steps_per_epoch} {avg} {rate:.2f} it/s eta {eta / 60:.1f}m", flush=True)
+
+            last_train_losses = {t: totals[t] / steps_per_epoch for t in self.tasks}
+            log = f"epoch {epoch}/{epochs} - train: " + ", ".join(f"{t}={v:.4f}" for t, v in last_train_losses.items())
+
+            val_loss = None
+            if self.val_datasets:
+                val_loss = self._evaluate(num_workers=num_workers)
+                log += f" - val_avg: {val_loss:.4f}"
+            print(log, flush=True)
+
+            self.save_checkpoints(epoch, best=False)
+
+            if val_loss is not None:
+                improved = val_loss < best_val
+                if improved:
+                    best_val = val_loss
+                    epochs_without_improvement = 0
+                    self.save_checkpoints(epoch, best=True)
+                else:
+                    epochs_without_improvement += 1
+                if early_stop_patience and epochs_without_improvement >= early_stop_patience:
+                    print(f"early stop: no val improvement for {epochs_without_improvement} epoch(s)", flush=True)
+                    break
+            else:
+                self.save_checkpoints(epoch, best=True)
+
+        return {"train_losses": last_train_losses, "best_val": best_val if self.val_datasets else None}
+
+    def _evaluate(self, num_workers: int = 0) -> float:
+        self.model.eval()
+        per_task_avg = []
+        with torch.no_grad():
+            for t, ds in self.val_datasets.items():
+                loader = DataLoader(ds, batch_size=32, shuffle=False, collate_fn=self.collate_fn, num_workers=num_workers)
+                total, n = 0.0, 0
+                for batch in loader:
+                    loss = self._forward_task(t, batch)
+                    total += loss.item()
+                    n += 1
+                per_task_avg.append(total / max(n, 1))
+        return sum(per_task_avg) / max(len(per_task_avg), 1)
+
+    def save_checkpoints(self, epoch: int, *, best: bool) -> None:
+        """One checkpoint per task, each shaped exactly like a single-task
+        ``HearthModel(encoder, head)`` state dict (``encoder.*`` / ``head.*``
+        keys) — every existing ``onnx_export.py`` loader works unmodified.
+        All five embed byte-identical encoder weights, since every task's
+        head was trained against the *same* encoder ``nn.Module`` instance.
+        """
+        from dataclasses import asdict
+
+        name = "best.pt" if best else "last.pt"
+        cfg = self.model.encoder.config
+        enc_state = self.model.encoder.state_dict()
+        for t in self.tasks:
+            state = {f"encoder.{k}": v for k, v in enc_state.items()}
+            state.update({f"head.{k}": v for k, v in self.model.heads[t].state_dict().items()})
+            out_dir = os.path.join(self.checkpoint_root, t)
+            os.makedirs(out_dir, exist_ok=True)
+            torch.save({"model_state_dict": state, "epoch": epoch, "config": asdict(cfg)}, os.path.join(out_dir, name))

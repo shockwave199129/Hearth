@@ -12,6 +12,47 @@ from app.db.sqlite_models import get_connection
 
 SAFETY_AUDIT_DB_PATH = DATA_DIR / "profile.db"
 
+# Book Vol 6 Ch12: this exemption from Volume 4's general deletion rights
+# must be disclosed to the user explicitly, in plain language — never a
+# silent carve-out. Surfaced via /api/safety/status.
+RETENTION_POLICY_DISCLOSURE = (
+    "Messages that trigger a safety check (for example, signs of crisis or acute distress) are "
+    "kept in a separate, limited safety record for up to 30 days, even if you delete your other "
+    "memories or chat history. This is so a safety response can be reviewed for quality and "
+    "improved over time. After 30 days, that record is deleted. Nothing else about your "
+    "conversations is treated this way."
+)
+
+
+def retention_policy_disclosure() -> str:
+    return RETENTION_POLICY_DISCLOSURE
+
+
+def pending_entry_count(user_id: str) -> int:
+    """How many of this user's safety-audit entries are currently retained
+    (not yet purged) — surfaced for transparency, same principle as
+    /api/memories."""
+    conn = get_connection(SAFETY_AUDIT_DB_PATH)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS safety_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                category TEXT NOT NULL,
+                confidence_signals TEXT NOT NULL,
+                response_taken TEXT NOT NULL,
+                outcome_notes TEXT NOT NULL,
+                retention_expiry TEXT NOT NULL
+            )
+            """
+        )
+        row = conn.execute("SELECT COUNT(*) FROM safety_audit WHERE user_id = ?", (user_id,)).fetchone()
+        return int(row[0]) if row else 0
+    finally:
+        conn.close()
+
 
 @dataclass(frozen=True)
 class SafetyAuditEntry:

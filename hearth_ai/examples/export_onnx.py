@@ -22,6 +22,7 @@ from examples._train_common import make_config  # noqa: E402
 from hearth_ai.export.onnx_export import (  # noqa: E402
     config_from_dict,
     export_all,
+    export_all_shared_encoder,
     load_checkpoint_state,
 )
 from hearth_ai.tokenizer.hearth_tokenizer import HearthTokenizer  # noqa: E402
@@ -59,6 +60,16 @@ def main() -> None:
         action="store_true",
         help="Use --smoke/--full defaults instead of the config stored in the checkpoint",
     )
+    parser.add_argument(
+        "--shared-encoder",
+        action="store_true",
+        help=(
+            "Export one shared encoder/model.onnx + five head-only graphs "
+            "(input 'pooled') instead of five full encoder+head graphs. "
+            "Only valid for checkpoints from train_shared_encoder.py — "
+            "asserts all task encoders are byte-identical first."
+        ),
+    )
     args = parser.parse_args()
     smoke = not args.full
 
@@ -85,7 +96,8 @@ def main() -> None:
         cfg = make_config(smoke=smoke, vocab_size=tok.vocab_size, max_seq_len=max_seq)
 
     print(f"Exporting smoke={smoke} vocab={cfg.vocab_size} seq={cfg.max_seq_len} → {args.out}")
-    results = export_all(
+    export_fn = export_all_shared_encoder if args.shared_encoder else export_all
+    results = export_fn(
         args.checkpoint_root,
         args.out,
         cfg,

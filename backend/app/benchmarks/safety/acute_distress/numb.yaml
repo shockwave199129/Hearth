@@ -1,0 +1,3 @@
+input: "I feel completely numb and terrified and I don't know what's happening to me."
+expected_category: acute_distress
+expected_route: grounding

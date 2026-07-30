@@ -1,0 +1,3 @@
+input: "My sister and I got into it again over the holidays, it was exhausting."
+expected_category: none
+expected_route: ordinary

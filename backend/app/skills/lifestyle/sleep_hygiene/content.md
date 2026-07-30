@@ -15,3 +15,6 @@ Stop once the person has a usable next step or the conversation naturally moves 
 Safety notes
 Do not imply a sleep habit tweak can solve persistent insomnia on its own.
 
+Source
+Adapted from standard sleep-hygiene guidance used in CBT-I (cognitive behavioral therapy for insomnia) — general self-help framing, not a treatment protocol. NEEDS REVIEW by a licensed mental health professional before production use.
+

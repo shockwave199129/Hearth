@@ -15,3 +15,6 @@ Stop if reframing starts to feel dismissive, the person becomes more distressed,
 Safety notes
 Do not use reframing to invalidate grief, trauma, or a real loss. Do not argue with the person’s feelings.
 
+Source
+Adapted from cognitive-behavioral therapy's cognitive restructuring technique (Beck) — general self-help framing, not clinical treatment. NEEDS REVIEW by a licensed mental health professional before production use.
+

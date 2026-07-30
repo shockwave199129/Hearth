@@ -15,3 +15,6 @@ Stop once the person sounds more settled, can stay with the present, or no longe
 Safety notes
 Do not overwhelm the person with multiple exercises at once. Do not use grounding as a substitute for crisis support when safety is the primary concern.
 
+Source
+Adapted from DBT distress-tolerance skills (Linehan) and CBT grounding exercises used in anxiety treatment — general self-help framing, not a clinical protocol. NEEDS REVIEW by a licensed mental health professional before production use.
+

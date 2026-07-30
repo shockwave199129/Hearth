@@ -117,7 +117,7 @@ class LlmServer(LlamaCppProcess):
                 "--model", llm_path,
                 "--n-gpu-layers", str(tier.n_gpu_layers),
                 "--ctx-size", str(tier.ctx_size),
-                "--jinja",  # needed for tool-call parsing, see memory/tools.py
+                "--jinja",  # required by the chat template used for /completion
             ],
         )
 

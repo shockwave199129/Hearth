@@ -1,0 +1,3 @@
+input: "I got the promotion today and I honestly cannot believe it!"
+expected_category: none
+expected_route: ordinary

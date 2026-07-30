@@ -22,6 +22,9 @@ sounddevice==0.5.*
 # onnx is required for onnxruntime.quantization submodule import
 onnx==1.22.*
 
+# Append-only observation store for the learning track (app/learning/observation_store.py).
+duckdb>=1.0,<2.0
+
 # hearth_ai NLP classifiers (app/nlp) — BPE tokenizer JSON + ORT sessions
 tokenizers>=0.20
 

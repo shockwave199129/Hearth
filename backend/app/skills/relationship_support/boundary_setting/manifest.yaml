@@ -10,4 +10,9 @@ values_implemented: [respect_autonomy, honesty_over_illusion]
 estimated_tokens: 170
 estimated_latency: 0
 category: relationship_support
+source: >-
+  Adapted from assertiveness-communication frameworks used in
+  interpersonal-effectiveness training (Linehan's DBT "DEAR MAN" skill) —
+  general self-help framing. NEEDS REVIEW by a licensed mental health
+  professional before production use.
 

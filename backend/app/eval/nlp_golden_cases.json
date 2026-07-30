@@ -62,11 +62,11 @@
         ]
       },
       "snapshot": {
-        "emotion": "unknown",
-        "intent": "inquire",
-        "strategy": "comfort",
+        "emotion": "anxiety",
+        "intent": "comfort",
+        "strategy": "reflect",
         "memory_store": true,
-        "memory_type": "goal"
+        "memory_type": "boundary"
       }
     },
     {
@@ -128,11 +128,11 @@
         ]
       },
       "snapshot": {
-        "emotion": "unknown",
-        "intent": "inquire",
-        "strategy": "comfort",
+        "emotion": "anger",
+        "intent": "comfort",
+        "strategy": "listen",
         "memory_store": true,
-        "memory_type": "person"
+        "memory_type": "emotional"
       }
     },
     {
@@ -194,11 +194,11 @@
         ]
       },
       "snapshot": {
-        "emotion": "unknown",
+        "emotion": "anxiety",
         "intent": "vent",
-        "strategy": "celebrate",
+        "strategy": "validate",
         "memory_store": true,
-        "memory_type": "emotional"
+        "memory_type": "boundary"
       }
     },
     {
@@ -260,11 +260,11 @@
         ]
       },
       "snapshot": {
-        "emotion": "unknown",
-        "intent": "inquire",
+        "emotion": "sadness",
+        "intent": "celebrate",
         "strategy": "listen",
         "memory_store": true,
-        "memory_type": "goal"
+        "memory_type": "other"
       }
     },
     {
@@ -326,9 +326,9 @@
         ]
       },
       "snapshot": {
-        "emotion": "unknown",
-        "intent": "meta",
-        "strategy": "listen",
+        "emotion": "pride",
+        "intent": "small_talk",
+        "strategy": "reflect",
         "memory_store": false,
         "memory_type": null
       }
@@ -392,11 +392,11 @@
         ]
       },
       "snapshot": {
-        "emotion": "unknown",
-        "intent": "inquire",
+        "emotion": "anger",
+        "intent": "vent",
         "strategy": "listen",
-        "memory_store": false,
-        "memory_type": null
+        "memory_store": true,
+        "memory_type": "emotional"
       }
     },
     {
@@ -458,11 +458,11 @@
         ]
       },
       "snapshot": {
-        "emotion": "unknown",
-        "intent": "vent",
-        "strategy": "ground",
+        "emotion": "neutral",
+        "intent": "celebrate",
+        "strategy": "listen",
         "memory_store": true,
-        "memory_type": "episodic"
+        "memory_type": "boundary"
       }
     },
     {
@@ -524,11 +524,11 @@
         ]
       },
       "snapshot": {
-        "emotion": "unknown",
-        "intent": "inquire",
-        "strategy": "ask_question",
+        "emotion": "gratitude",
+        "intent": "vent",
+        "strategy": "listen",
         "memory_store": true,
-        "memory_type": "goal"
+        "memory_type": "person"
       }
     },
     {
@@ -590,11 +590,11 @@
         ]
       },
       "snapshot": {
-        "emotion": "unknown",
-        "intent": "inquire",
-        "strategy": "ask_question",
+        "emotion": "hope",
+        "intent": "advise",
+        "strategy": "advise",
         "memory_store": true,
-        "memory_type": "episodic"
+        "memory_type": "goal"
       }
     },
     {
@@ -656,9 +656,9 @@
         ]
       },
       "snapshot": {
-        "emotion": "unknown",
-        "intent": "inquire",
-        "strategy": "celebrate",
+        "emotion": "gratitude",
+        "intent": "meta",
+        "strategy": "encourage",
         "memory_store": true,
         "memory_type": "episodic"
       }

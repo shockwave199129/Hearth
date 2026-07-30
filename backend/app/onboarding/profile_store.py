@@ -17,9 +17,10 @@ PROFILE_DB_PATH = DATA_DIR / "profile.db"
 
 _COLUMNS = (
     "user_id, name, age_range, gender, profession, stressors, preferred_voice, companion_name, "
-    "communication_formality, response_length, speak_replies, emergency_contact_consent, emergency_contact_name, emergency_contact_method, "
+    "communication_formality, response_length, emoji_usage, speak_replies, emergency_contact_consent, emergency_contact_name, emergency_contact_method, "
     "emergency_contact_value, relationship_general_trust, relationship_vulnerability_trust, "
-    "relationship_advice_trust, relationship_consistency_confidence, relationship_boundaries, relationship_life_model, created_at"
+    "relationship_advice_trust, relationship_consistency_confidence, relationship_boundaries, relationship_life_model, "
+    "communication_traits_json, skill_affinity_json, evaluation_last_run_at, region, created_at"
 )
 
 
@@ -35,6 +36,7 @@ def _row_to_profile(row) -> UserProfile:
         companion_name,
         communication_formality,
         response_length,
+        emoji_usage,
         speak_replies,
         emergency_contact_consent,
         emergency_contact_name,
@@ -49,6 +51,7 @@ def _row_to_profile(row) -> UserProfile:
         communication_traits_json,
         skill_affinity_json,
         evaluation_last_run_at,
+        region,
         created_at,
     ) = row
     return UserProfile(
@@ -62,6 +65,7 @@ def _row_to_profile(row) -> UserProfile:
         companion_name=companion_name,
         communication_formality=communication_formality,
         response_length=response_length,
+        emoji_usage=emoji_usage,
         speak_replies=bool(speak_replies),
         emergency_contact_consent=bool(emergency_contact_consent),
         emergency_contact_name=emergency_contact_name,
@@ -76,6 +80,7 @@ def _row_to_profile(row) -> UserProfile:
         communication_traits=json.loads(communication_traits_json or "{}"),
         skill_affinity=json.loads(skill_affinity_json or "{}"),
         evaluation_last_run_at=datetime.fromisoformat(evaluation_last_run_at) if evaluation_last_run_at else None,
+        region=region,
         created_at=datetime.fromisoformat(created_at),
     )
 
@@ -87,7 +92,8 @@ def create_profile(payload: OnboardingRequest) -> UserProfile:
     conn = get_connection(PROFILE_DB_PATH)
     try:
         conn.execute(
-            f"INSERT INTO profiles ({_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO profiles ({_COLUMNS}) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 profile.user_id,
                 profile.name,
@@ -99,6 +105,7 @@ def create_profile(payload: OnboardingRequest) -> UserProfile:
                 profile.companion_name,
                 profile.communication_formality,
                 profile.response_length,
+                profile.emoji_usage,
                 int(profile.speak_replies),
                 int(profile.emergency_contact_consent),
                 profile.emergency_contact_name,
@@ -113,6 +120,7 @@ def create_profile(payload: OnboardingRequest) -> UserProfile:
                 json.dumps(profile.communication_traits),
                 json.dumps(profile.skill_affinity),
                 profile.evaluation_last_run_at.isoformat() if profile.evaluation_last_run_at else None,
+                profile.region,
                 profile.created_at.isoformat(),
             ),
         )
@@ -132,14 +140,29 @@ def update_speak_replies(user_id: str, value: bool) -> None:
 
 
 def update_communication_preferences(
-    user_id: str, *, communication_formality: str, response_length: str
+    user_id: str, *, communication_formality: str, response_length: str, emoji_usage: str | None = None
 ) -> None:
     conn = get_connection(PROFILE_DB_PATH)
     try:
-        conn.execute(
-            "UPDATE profiles SET communication_formality = ?, response_length = ? WHERE user_id = ?",
-            (communication_formality, response_length, user_id),
-        )
+        if emoji_usage is None:
+            conn.execute(
+                "UPDATE profiles SET communication_formality = ?, response_length = ? WHERE user_id = ?",
+                (communication_formality, response_length, user_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE profiles SET communication_formality = ?, response_length = ?, emoji_usage = ? WHERE user_id = ?",
+                (communication_formality, response_length, emoji_usage, user_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_region(user_id: str, region: str | None) -> None:
+    conn = get_connection(PROFILE_DB_PATH)
+    try:
+        conn.execute("UPDATE profiles SET region = ? WHERE user_id = ?", (region, user_id))
         conn.commit()
     finally:
         conn.close()

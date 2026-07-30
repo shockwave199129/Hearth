@@ -12,6 +12,7 @@ Package layout (plan ``models/nlp/``)::
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from dataclasses import dataclass
@@ -275,6 +276,7 @@ def export_encoder(
         outputs=["pooled"],
         opset=opset,
         parity_max_abs_diff=max_diff,
+        graph_kind="full",
     )
     return ExportResult("encoder", onnx_path, max_diff, True)
 
@@ -327,9 +329,187 @@ def export_task(
         outputs=output_names,
         opset=opset,
         parity_max_abs_diff=max_diff,
+        graph_kind="full",
     )
     package_labels(task, out_dir)
     return ExportResult(task, onnx_path, max_diff, True)
+
+
+def tokenizer_sha256(tokenizer_path: Path | str) -> str:
+    return hashlib.sha256(Path(tokenizer_path).read_bytes()).hexdigest()
+
+
+ENCODER_IDENTITY_ATOL = 1e-6
+
+
+def assert_shared_encoder(loaded: dict[str, "HearthModel"], *, atol: float = ENCODER_IDENTITY_ATOL) -> None:
+    """Raise if the loaded per-task checkpoints do NOT share byte-identical
+    encoder weights. A single shared ONNX encoder session is only correct
+    when every head was trained against that same encoder — feeding one
+    task's encoder output into another task's head silently produces
+    wrong predictions if the encoders diverged (see MultiTaskTrainer's
+    docstring for how divergence happens with independent/sequential
+    training)."""
+    tasks = list(loaded)
+    if len(tasks) < 2:
+        return
+    reference = tasks[0]
+    ref_state = loaded[reference].encoder.state_dict()
+    for task in tasks[1:]:
+        state = loaded[task].encoder.state_dict()
+        if set(state) != set(ref_state):
+            raise AssertionError(f"encoder key mismatch between {reference!r} and {task!r}")
+        for key, ref_tensor in ref_state.items():
+            if not torch.allclose(ref_tensor, state[key], atol=atol):
+                max_diff = (ref_tensor - state[key]).abs().max().item()
+                raise AssertionError(
+                    f"encoder weights for task {task!r} diverge from {reference!r} "
+                    f"at {key!r} (max|Δ|={max_diff:.3e} > {atol}) — these checkpoints were "
+                    "not jointly trained with a shared encoder; re-run "
+                    "examples/train_shared_encoder.py, or export with the "
+                    "per-task full-graph path (export_all) instead of --shared-encoder."
+                )
+
+
+def export_head_only(
+    task: str,
+    model: "HearthModel",
+    out_dir: Path,
+    *,
+    sample_pooled: torch.Tensor,
+    opset: int = DEFAULT_OPSET,
+    atol: float = PARITY_ATOL,
+) -> ExportResult:
+    """Export just ``model.head`` — input ``pooled`` (batch, hidden), the
+    same output name/shape ``export_encoder`` produces. Only valid when the
+    task's encoder is byte-identical to whichever encoder is deployed as the
+    single shared ``encoder/model.onnx`` — callers must run
+    ``assert_shared_encoder`` first."""
+    out_dir = Path(out_dir)
+    onnx_path = out_dir / "model.onnx"
+    head = model.head
+    head.eval()
+
+    if task == "memory":
+        class _MemoryHeadOnnx(nn.Module):
+            def __init__(self, head: nn.Module):
+                super().__init__()
+                self.head = head
+
+            def forward(self, pooled: torch.Tensor):
+                out = self.head(pooled)
+                return out["store_logit"], out["type_logits"], out["importance_logit"]
+
+        wrap: nn.Module = _MemoryHeadOnnx(head)
+        output_names = ["store_logit", "type_logits", "importance_logit"]
+    else:
+        wrap = head
+        output_names = ["logits"]
+
+    with torch.no_grad():
+        raw = wrap(sample_pooled)
+        pt = [t.detach().cpu().numpy() for t in raw] if isinstance(raw, tuple) else [raw.detach().cpu().numpy()]
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with torch.no_grad():
+        torch.onnx.export(
+            wrap,
+            (sample_pooled,),
+            str(onnx_path),
+            input_names=["pooled"],
+            output_names=output_names,
+            dynamic_axes={"pooled": {0: "batch"}, **{n: {0: "batch"} for n in output_names}},
+            opset_version=opset,
+            dynamo=False,
+        )
+
+    import onnxruntime as ort
+
+    sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    ort_out = sess.run(None, {"pooled": sample_pooled.numpy()})
+    max_diff = parity_check(pt, ort_out, atol=atol)
+
+    write_config(
+        out_dir, model.encoder.config, artifact=task, inputs=["pooled"],
+        outputs=output_names, opset=opset, parity_max_abs_diff=max_diff, graph_kind="head_only",
+    )
+    package_labels(task, out_dir)
+    return ExportResult(task, onnx_path, max_diff, True)
+
+
+def export_all_shared_encoder(
+    checkpoint_root: Path | str,
+    out_root: Path | str,
+    config: HearthConfig,
+    *,
+    tokenizer_src: Path | str,
+    tasks: tuple[str, ...] = ("emotion", "intent", "memory", "relationship", "strategy"),
+    encoder_from: str = "emotion",
+    batch_size: int = 2,
+    seq_len: int = 24,
+    opset: int = DEFAULT_OPSET,
+    atol: float = PARITY_ATOL,
+    seed: int = 0,
+) -> list[ExportResult]:
+    """Export one shared ``encoder/model.onnx`` plus five head-only graphs
+    (``<task>/model.onnx``, input ``pooled``) — the 'share one encoder ONNX
+    session' packaging the nlp-track plan item calls for. Requires
+    checkpoints produced by ``MultiTaskTrainer``/``examples/train_shared_encoder.py``:
+    asserts every task's encoder weights are byte-identical before exporting
+    anything, refusing to silently ship a broken shared encoder."""
+    checkpoint_root = Path(checkpoint_root)
+    out_root = Path(out_root)
+    out_root.mkdir(parents=True, exist_ok=True)
+
+    rng = torch.Generator().manual_seed(seed)
+    sample_ids = torch.randint(0, config.vocab_size, (batch_size, seq_len), dtype=torch.long, generator=rng)
+    sample_mask = torch.ones(batch_size, seq_len, dtype=torch.long)
+
+    loaded: dict[str, HearthModel] = {}
+    for task in tasks:
+        ckpt = checkpoint_root / task / "best.pt"
+        if not ckpt.is_file():
+            ckpt = checkpoint_root / task / "last.pt"
+        if not ckpt.is_file():
+            raise FileNotFoundError(f"No checkpoint for {task} under {checkpoint_root / task}")
+        loaded[task] = load_task_model(task, ckpt, config)
+
+    assert_shared_encoder(loaded)
+
+    results: list[ExportResult] = [
+        export_encoder(
+            loaded[encoder_from].encoder, out_root / "encoder",
+            sample_ids=sample_ids, sample_mask=sample_mask, opset=opset, atol=atol,
+        )
+    ]
+
+    with torch.no_grad():
+        _, sample_pooled = loaded[encoder_from].encoder(sample_ids, sample_mask)
+
+    for task in tasks:
+        results.append(
+            export_head_only(task, loaded[task], out_root / task, sample_pooled=sample_pooled, opset=opset, atol=atol)
+        )
+
+    src = Path(tokenizer_src)
+    if not src.is_file():
+        raise FileNotFoundError(src)
+    shutil.copy2(src, out_root / "tokenizer.json")
+    tok_sha = tokenizer_sha256(src)
+
+    manifest = {
+        "opset": opset,
+        "parity_atol": atol,
+        "hearth_config": config_to_dict(config),
+        "graph_kind": "head_only",
+        "tokenizer_sha256": tok_sha,
+        "artifacts": [
+            {"name": r.name, "onnx": str(r.onnx_path.relative_to(out_root)), "max_abs_diff": r.max_abs_diff, "passed": r.passed}
+            for r in results
+        ],
+    }
+    (out_root / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return results
 
 
 def export_all(
@@ -400,16 +580,20 @@ def export_all(
         ),
     )
 
+    tok_sha = None
     if tokenizer_src is not None:
         src = Path(tokenizer_src)
         if not src.is_file():
             raise FileNotFoundError(src)
         shutil.copy2(src, out_root / "tokenizer.json")
+        tok_sha = tokenizer_sha256(src)
 
     manifest = {
         "opset": opset,
         "parity_atol": atol,
         "hearth_config": config_to_dict(config),
+        "graph_kind": "full",
+        "tokenizer_sha256": tok_sha,
         "artifacts": [
             {
                 "name": r.name,

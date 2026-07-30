@@ -20,12 +20,15 @@ import json
 import statistics
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from app.nlp.runtime import OnnxClassifier
 
 CASES_PATH = Path(__file__).resolve().parent / "nlp_golden_cases.json"
+METRICS_PATH = Path(__file__).resolve().parent / "nlp_golden_metrics.json"
+METRICS_HISTORY_LIMIT = 200
 DEFAULT_LATENCY_MS = 25.0
 LATENCY_WARMUP = 2
 LATENCY_RUNS = 20
@@ -133,6 +136,41 @@ def run_suite(
     return results, latency, suite_errors
 
 
+def persist_metrics(
+    *,
+    results: list[CaseResult],
+    latency: dict[str, float],
+    suite_errors: list[str],
+    graph_kind: str,
+    metrics_path: Path = METRICS_PATH,
+) -> dict[str, Any]:
+    """Append one run record to a JSON history file — gates are only useful
+    if a regression can be traced back to *when* it started, and printing to
+    stdout each run throws that history away (nlp-track: 'persist per-head
+    metrics with gates on by default')."""
+    failed = [r.case_id for r in results if not r.ok]
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "graph_kind": graph_kind,
+        "cases_total": len(results),
+        "cases_failed": failed,
+        "latency_p95_ms": {k: round(v, 3) for k, v in latency.items() if not k.endswith("_mean")},
+        "latency_mean_ms": {k.removesuffix("_mean"): round(v, 3) for k, v in latency.items() if k.endswith("_mean")},
+        "suite_errors": suite_errors,
+        "passed": not failed and not suite_errors,
+    }
+    history: list[dict[str, Any]] = []
+    if metrics_path.is_file():
+        try:
+            history = json.loads(metrics_path.read_text(encoding="utf-8"))
+        except Exception:
+            history = []
+    history.append(record)
+    history = history[-METRICS_HISTORY_LIMIT:]
+    metrics_path.write_text(json.dumps(history, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
 def update_snapshots(cases_path: Path = CASES_PATH, clf: OnnxClassifier | None = None) -> None:
     suite = load_cases(cases_path)
     clf = clf or OnnxClassifier()
@@ -148,13 +186,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--update", action="store_true", help="Rewrite golden snapshots from current models")
     parser.add_argument("--no-latency", action="store_true")
+    parser.add_argument("--no-persist-metrics", action="store_true", help="Skip writing to nlp_golden_metrics.json")
     args = parser.parse_args(argv)
 
     if args.update:
         update_snapshots()
         return 0
 
-    results, latency, suite_errors = run_suite(check_latency=not args.no_latency)
+    clf = OnnxClassifier()
+    results, latency, suite_errors = run_suite(clf, check_latency=not args.no_latency)
     if suite_errors and not results:
         for err in suite_errors:
             print(f"ERROR: {err}")
@@ -170,6 +210,12 @@ def main(argv: list[str] | None = None) -> int:
         print("latency p95 (ms):", {k: round(v, 2) for k, v in latency.items() if not k.endswith("_mean")})
     for err in suite_errors:
         print(f"ERROR: {err}")
+
+    if not args.no_persist_metrics and results:
+        persist_metrics(
+            results=results, latency=latency, suite_errors=suite_errors,
+            graph_kind=getattr(clf, "_graph_kind", "full"),
+        )
 
     if failed or suite_errors:
         print(f"\n{len(failed)} case(s) failed, {len(suite_errors)} suite error(s)")

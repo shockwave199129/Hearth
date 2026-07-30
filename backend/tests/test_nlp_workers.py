@@ -9,7 +9,10 @@ from app.cognitive.mind_state import MindState
 from app.cognitive.scheduler import CognitiveScheduler
 from app.config import resolve_nlp_models_dir
 from app.nlp.runtime import OnnxClassifier
+from app.safety2.worker import SafetyAssessment
 from app.workers.runner import NLP_WORKER_NAMES, NlpWorkerRunner
+
+_ORDINARY = SafetyAssessment(category="none", confidence=0.0, route="ordinary")
 
 
 def test_resolve_nlp_models_dir_finds_repo_package():
@@ -48,13 +51,14 @@ def test_scheduler_schedules_nlp_on_full_path_only():
     sched = CognitiveScheduler()
     mind = MindState()
     # Short greeting → fast_path (no NLP workers)
-    task_fast = sched.schedule("hi", mind)
+    task_fast = sched.schedule("hi", mind, _ORDINARY)
     assert "emotion" not in task_fast.workers
     # Emotional / complex → full_path
     mind2 = MindState()
     task_full = sched.schedule(
         "I feel so overwhelmed and scared and I don't know what to do about everything falling apart.",
         mind2,
+        _ORDINARY,
     )
     if task_full.complexity.level == "full_path":
         assert set(NLP_WORKER_NAMES).issubset(task_full.workers)
@@ -71,3 +75,34 @@ def test_fail_soft_when_models_missing(tmp_path):
     assert mind.nlp_available is False
     assert mind.emotion == "unknown"
     assert mind.intent == "unknown"
+
+
+def test_finalize_communication_state_uses_real_classifier_signal():
+    """End-to-end: schedule -> run NLP workers -> finalize should let the
+    real hearth_ai intent/emotion heads (not just keyword heuristics) drive
+    MindState.stage/communication_mode on a full_path turn."""
+    sched = CognitiveScheduler()
+    mind = MindState()
+    transcript = (
+        "I got the promotion today and I honestly cannot believe it, I've "
+        "been working toward this for two years!"
+    )
+    task = sched.schedule(transcript, mind, _ORDINARY)
+    NlpWorkerRunner().run(task.workers, transcript, mind)
+    assert mind.nlp_available is True
+    sched.finalize_communication_state(transcript, mind)
+    # A genuinely celebratory message should land on a positive intent/emotion
+    # and never get mapped to "calm" purely because of stray keyword overlap.
+    assert mind.intent in {"celebrate", "small_talk", "validate"}
+    assert mind.stage in {"supporting", "listening", "exploring", "understanding"}
+
+
+def test_finalize_communication_state_falls_back_to_keywords_on_fast_path():
+    sched = CognitiveScheduler()
+    mind = MindState()
+    task = sched.schedule("hi", mind, _ORDINARY)
+    NlpWorkerRunner().run(task.workers, "hi", mind)
+    assert mind.nlp_available is False  # fast_path never schedules NLP workers
+    sched.finalize_communication_state("hi", mind)
+    assert mind.stage == "greeting"
+    assert mind.communication_mode == "gentle"
