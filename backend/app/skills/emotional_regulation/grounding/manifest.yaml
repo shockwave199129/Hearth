@@ -1,0 +1,18 @@
+name: Grounding
+skill_id: grounding
+version: 1.0.0
+description: Short sensory and breathing support for acute stress or racing thoughts.
+tags: [anxiety, overwhelm, panic, grounding]
+when_use: [anxiety, overwhelm, panic, racing thoughts, physical distress]
+avoid: [reflection, deep analysis, grief]
+conversation_depth: [medium, deep]
+values_implemented: [presence_over_perfection, compassion_over_judgment]
+estimated_tokens: 160
+estimated_latency: 0
+category: emotional_regulation
+source: >-
+  Adapted from DBT distress-tolerance skills (Linehan) and CBT grounding
+  exercises used in anxiety treatment — general self-help framing, not a
+  clinical protocol. NEEDS REVIEW by a licensed mental health professional
+  before production use.
+

@@ -22,6 +22,21 @@ class ShortTermMemory:
         # back to the live session that produced them.
         self.session_id = str(uuid.uuid4())
 
+    def restore(
+        self,
+        *,
+        messages: list[dict] | None = None,
+        session_summary: str = "",
+        session_id: str | None = None,
+        next_turn_id: int | None = None,
+    ) -> None:
+        self.messages = list(messages or [])
+        self.session_summary = session_summary
+        if session_id:
+            self.session_id = session_id
+        if next_turn_id is not None:
+            self._next_turn_id = next_turn_id
+
     def add_turn(self, user_text: str, assistant_text: str) -> int:
         turn_id = self._next_turn_id
         self._next_turn_id += 1

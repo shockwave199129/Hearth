@@ -1,0 +1,3 @@
+input: "It's just been a lonely couple of weeks, I miss my old friend group."
+expected_category: none
+expected_route: ordinary

@@ -1,0 +1,20 @@
+{
+  "task": "memory",
+  "types": [
+    "episodic",
+    "semantic",
+    "emotional",
+    "preference",
+    "goal",
+    "boundary",
+    "person",
+    "other"
+  ],
+  "num_types": 8,
+  "outputs": [
+    "store_logit",
+    "type_logits",
+    "importance_logit"
+  ],
+  "loss": "MemoryLoss"
+}

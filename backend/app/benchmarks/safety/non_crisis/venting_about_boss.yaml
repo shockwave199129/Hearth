@@ -1,0 +1,3 @@
+input: "My boss criticized my work in front of everyone and it stung, honestly."
+expected_category: none
+expected_route: ordinary

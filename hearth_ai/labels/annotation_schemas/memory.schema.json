@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hearth_ai/annotation/memory",
+  "title": "Hearth Memory annotation",
+  "description": "LLM/human annotation schema for MemoryHead. One object per user turn.",
+  "type": "object",
+  "required": ["text", "store", "type", "importance"],
+  "properties": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "description": "User utterance (or situation summary) to judge for memory formation."
+    },
+    "store": {
+      "type": "integer",
+      "enum": [0, 1],
+      "description": "1 = persist as long-term memory; 0 = do not store."
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "episodic",
+        "semantic",
+        "emotional",
+        "preference",
+        "goal",
+        "boundary",
+        "person",
+        "other"
+      ],
+      "description": "Memory type when store=1; use other when store=0."
+    },
+    "importance": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "0–1 importance. Near 0 when store=0."
+    },
+    "annotator": {
+      "type": "string",
+      "description": "Optional: human | llm:<model> | synthetic"
+    },
+    "notes": { "type": "string" }
+  },
+  "additionalProperties": false
+}

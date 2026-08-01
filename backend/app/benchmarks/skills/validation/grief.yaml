@@ -1,0 +1,4 @@
+input: "I feel so hurt and alone."
+expected_strategy: validate
+expect_skill: validation
+

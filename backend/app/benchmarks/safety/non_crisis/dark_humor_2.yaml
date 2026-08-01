@@ -1,0 +1,3 @@
+input: "I could just die of embarrassment, that presentation was a disaster."
+expected_category: none
+expected_route: ordinary

@@ -1,0 +1,29 @@
+# Region-specific resources layered on top of global.yaml when the
+# profile's region is "us" (Book Vol 6 Ch 7). Public, well-known services.
+last_updated: "2026-07-30"
+source_notes: >-
+  Verified against each service's own public-facing description as of
+  last_updated. NEEDS REVIEW by a qualified safety/clinical professional on
+  an ongoing basis.
+resources:
+  - id: us_988_lifeline
+    title: 988 Suicide & Crisis Lifeline
+    description: "Call or text 988, available 24/7 across the United States."
+    contact: "988"
+    region: us
+    category: acute_self_risk
+    verified: true
+  - id: us_crisis_text_line
+    title: Crisis Text Line (US)
+    description: "Free, 24/7 text-based crisis support. Text HOME to 741741."
+    contact: "741741"
+    region: us
+    category: acute_self_risk
+    verified: true
+  - id: us_domestic_violence_hotline
+    title: National Domestic Violence Hotline
+    description: "Call 1-800-799-7233, or text START to 88788. 24/7."
+    contact: "1-800-799-7233"
+    region: us
+    category: disclosed_harm_to_others
+    verified: true

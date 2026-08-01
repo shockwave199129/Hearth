@@ -1,0 +1,18 @@
+{
+  "task": "intent",
+  "labels": [
+    "vent",
+    "validate",
+    "comfort",
+    "celebrate",
+    "advise",
+    "inquire",
+    "plan",
+    "small_talk",
+    "meta",
+    "unknown"
+  ],
+  "num_labels": 10,
+  "output": "logits",
+  "loss": "CrossEntropy"
+}

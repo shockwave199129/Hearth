@@ -1,0 +1,6 @@
+# No literal dependency phrase in this message — exercises the contextual
+# layer (Vol 3 AttachmentSignals from recent messages), not the regex.
+input: "Anyway, what are we doing today?"
+attachment_signal: true
+expected_category: dependency_attachment
+expected_route: gentle_autonomy

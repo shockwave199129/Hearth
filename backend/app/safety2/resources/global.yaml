@@ -1,0 +1,48 @@
+# Book Vol 6 Ch 7 — resources live in configurable data, never hardcoded
+# into a skill's content.md or a prompt template. This file holds resources
+# with broad, international applicability; `regions/<region_code>.yaml`
+# holds region-specific entries layered on top when a profile's `region` is
+# known (app.safety2.worker.load_resources).
+#
+# These are well-known, publicly published crisis-support services (the
+# same kind of information already referenced in app/config.py's
+# SAFETY_RESPONSE_TEXT and any responsible consumer app would list) — not
+# confidential or region-restricted data. Still: this is a snapshot, not a
+# standing verification process. Vol 6 Ch 7 treats an unreviewed resource
+# store as something to flag internally, not silently keep serving — see
+# `stale_after_days` below and app.safety2.worker.resources_are_stale.
+last_updated: "2026-07-30"
+stale_after_days: 180
+source_notes: >-
+  Entries below are publicly published, well-known crisis-support services,
+  verified against each service's own public-facing description as of
+  last_updated. NEEDS REVIEW by a qualified safety/clinical professional on
+  an ongoing basis (Vol 6 Ch 7) — this is a snapshot, not a standing
+  verification process this codebase can perform on its own.
+resources:
+  - id: findahelpline
+    title: Find A Helpline
+    description: >-
+      International directory of crisis and emotional-support helplines by
+      country — use when no specific regional resource is configured.
+    contact: "https://findahelpline.com"
+    region: global
+    category: acute_self_risk
+    verified: true
+  - id: befrienders_worldwide
+    title: Befrienders Worldwide
+    description: "International network of emotional-support helplines."
+    contact: "https://befrienders.org"
+    region: global
+    category: acute_self_risk
+    verified: true
+  - id: crisis_text_line_international
+    title: Crisis Text Line
+    description: >-
+      Free, 24/7 text-based crisis support. Available in the US, UK,
+      Canada, and Ireland — text HOME to the local short code listed on
+      crisistextline.org for your country.
+    contact: "https://www.crisistextline.org"
+    region: global
+    category: acute_self_risk
+    verified: true

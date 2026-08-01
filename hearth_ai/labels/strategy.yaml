@@ -1,0 +1,34 @@
+# Hearth StrategyHead — single-label (CrossEntropyLoss)
+# Suggested response strategy for Intervention / PromptBuilder context only.
+# Scheduler owns strategy; LLM never decides it (Book Compute Router).
+task: strategy
+loss: cross_entropy
+multi_label: false
+num_labels: 12
+
+labels:
+  - listen
+  - validate
+  - reflect
+  - comfort
+  - encourage
+  - celebrate
+  - advise
+  - ask_question
+  - plan
+  - ground
+  - boundary
+  - defer_safety
+
+# Soft hints from intent → likely strategies (for weak labels / priors only)
+intent_priors:
+  vent: [listen, validate, comfort]
+  validate: [validate, reflect]
+  comfort: [comfort, ground]
+  celebrate: [celebrate, encourage]
+  advise: [advise, plan]
+  inquire: [ask_question, listen]
+  plan: [plan, advise]
+  small_talk: [listen, ask_question]
+  meta: [listen]
+  unknown: [listen, validate]

@@ -1,0 +1,3 @@
+input: "Traveling always stresses me out, I hate dealing with airports."
+expected_category: none
+expected_route: ordinary

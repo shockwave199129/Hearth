@@ -1,0 +1,3 @@
+input: "I can't breathe, I feel like I'm spiraling and everything is too much right now."
+expected_category: acute_distress
+expected_route: grounding

@@ -11,6 +11,14 @@ export interface Profile {
   stressors: string[];
   preferred_voice: "female" | "male";
   companion_name: string;
+  communication_formality: "casual" | "neutral" | "formal";
+  response_length: "short" | "balanced" | "long";
+  relationship_general_trust: number;
+  relationship_vulnerability_trust: number;
+  relationship_advice_trust: number;
+  relationship_consistency_confidence: number;
+  relationship_boundaries: string;
+  relationship_life_model: string;
   speak_replies: boolean;
   emergency_contact_consent: boolean;
   emergency_contact_name: string | null;
@@ -19,7 +27,17 @@ export interface Profile {
   created_at: string;
 }
 
-export type OnboardingPayload = Omit<Profile, "created_at" | "user_id">;
+export type OnboardingPayload = Omit<
+  Profile,
+  | "created_at"
+  | "user_id"
+  | "relationship_general_trust"
+  | "relationship_vulnerability_trust"
+  | "relationship_advice_trust"
+  | "relationship_consistency_confidence"
+  | "relationship_boundaries"
+  | "relationship_life_model"
+>;
 
 export interface ProfileContextValue {
   profile: Profile | null;
@@ -27,6 +45,10 @@ export interface ProfileContextValue {
   error: string | null;
   submitOnboarding: (payload: OnboardingPayload) => Promise<Profile>;
   setSpeakReplies: (value: boolean) => Promise<void>;
+  setCommunicationPreferences: (value: {
+    communication_formality: "casual" | "neutral" | "formal";
+    response_length: "short" | "balanced" | "long";
+  }) => Promise<void>;
 }
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
@@ -92,9 +114,26 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     setProfile(updated);
   }, []);
 
+  const setCommunicationPreferences = useCallback(
+    async (value: {
+      communication_formality: "casual" | "neutral" | "formal";
+      response_length: "short" | "balanced" | "long";
+    }) => {
+      const res = await backendFetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ speak_replies: profile?.speak_replies ?? true, ...value }),
+      });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const updated = (await res.json()) as Profile;
+      setProfile(updated);
+    },
+    [profile],
+  );
+
   const value = useMemo(
-    () => ({ profile, loading, error, submitOnboarding, setSpeakReplies }),
-    [profile, loading, error, submitOnboarding, setSpeakReplies],
+    () => ({ profile, loading, error, submitOnboarding, setSpeakReplies, setCommunicationPreferences }),
+    [profile, loading, error, submitOnboarding, setSpeakReplies, setCommunicationPreferences],
   );
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;

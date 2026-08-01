@@ -1,0 +1,18 @@
+name: Cognitive Reframing
+skill_id: cognitive_reframing
+version: 1.0.0
+description: Gentle ways to loosen a hard thought without dismissing the feeling.
+tags: [rumination, worry, self-criticism, reframing]
+when_use: [rumination, worry, self criticism, stuck thoughts]
+avoid: [panic, acute distress, overwhelming emotion]
+conversation_depth: [medium, deep]
+values_implemented: [curiosity_over_assumption, honesty_over_illusion]
+estimated_tokens: 170
+estimated_latency: 0
+category: cognitive_support
+source: >-
+  Adapted from cognitive-behavioral therapy's cognitive restructuring
+  technique (Beck) — general self-help framing, not clinical treatment.
+  NEEDS REVIEW by a licensed mental health professional before production
+  use.
+

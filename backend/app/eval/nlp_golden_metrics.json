@@ -1,0 +1,50 @@
+[
+  {
+    "timestamp": "2026-07-30T10:26:02.458790+00:00",
+    "graph_kind": "full",
+    "cases_total": 10,
+    "cases_failed": [],
+    "latency_p95_ms": {
+      "emotion": 27.896,
+      "intent": 20.459,
+      "memory": 22.904,
+      "relationship": 25.952,
+      "strategy": 29.831
+    },
+    "latency_mean_ms": {
+      "emotion": 26.654,
+      "intent": 18.875,
+      "memory": 21.703,
+      "relationship": 21.654,
+      "strategy": 19.868
+    },
+    "suite_errors": [
+      "latency p95 emotion=27.9ms exceeds 25.0ms",
+      "latency p95 relationship=26.0ms exceeds 25.0ms",
+      "latency p95 strategy=29.8ms exceeds 25.0ms"
+    ],
+    "passed": false
+  },
+  {
+    "timestamp": "2026-08-01T08:40:45.646031+00:00",
+    "graph_kind": "head_only",
+    "cases_total": 10,
+    "cases_failed": [],
+    "latency_p95_ms": {
+      "emotion": 16.573,
+      "intent": 16.749,
+      "memory": 16.65,
+      "relationship": 16.671,
+      "strategy": 16.854
+    },
+    "latency_mean_ms": {
+      "emotion": 15.885,
+      "intent": 15.513,
+      "memory": 15.988,
+      "relationship": 15.921,
+      "strategy": 16.004
+    },
+    "suite_errors": [],
+    "passed": true
+  }
+]

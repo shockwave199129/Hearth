@@ -11,6 +11,16 @@ const VOICES = [
   { id: "female", label: "Warm & even" },
   { id: "male", label: "Calm & low" },
 ] as const;
+const FORMALITY_OPTIONS = [
+  { id: "casual", label: "Casual" },
+  { id: "neutral", label: "Neutral" },
+  { id: "formal", label: "Formal" },
+] as const;
+const LENGTH_OPTIONS = [
+  { id: "short", label: "Short" },
+  { id: "balanced", label: "Balanced" },
+  { id: "long", label: "Longer" },
+] as const;
 
 interface OnboardingData {
   name: string;
@@ -19,13 +29,15 @@ interface OnboardingData {
   profession: string;
   stressors: string[];
   preferredVoice: "female" | "male";
+  communicationFormality: "casual" | "neutral" | "formal";
+  responseLength: "short" | "balanced" | "long";
   emergencyContactConsent: boolean;
   emergencyContactName: string;
   emergencyContactMethod: "sms" | "email";
   emergencyContactValue: string;
 }
 
-const STEPS = ["Names", "About you", "What's on your mind", "Voice", "Safety"] as const;
+const STEPS = ["Names", "About you", "What's on your mind", "Style", "Voice", "Safety"] as const;
 
 export function Onboarding() {
   const navigate = useNavigate();
@@ -41,6 +53,8 @@ export function Onboarding() {
     profession: "",
     stressors: [],
     preferredVoice: "female",
+    communicationFormality: "casual",
+    responseLength: "balanced",
     emergencyContactConsent: false,
     emergencyContactName: "",
     emergencyContactMethod: "sms",
@@ -70,6 +84,8 @@ export function Onboarding() {
         stressors: data.stressors,
         preferred_voice: data.preferredVoice,
         companion_name: data.companionName.trim() || "Companion",
+        communication_formality: data.communicationFormality,
+        response_length: data.responseLength,
         speak_replies: true,
         emergency_contact_consent: data.emergencyContactConsent,
         emergency_contact_name: data.emergencyContactConsent ? data.emergencyContactName.trim() || null : null,
@@ -170,7 +186,37 @@ export function Onboarding() {
         {step === 3 && (
           <div className="onboarding__step">
             <h1>One last thing</h1>
-            <p className="onboarding__hint">How should I sound?</p>
+            <p className="onboarding__hint">How should I sound when I talk with you?</p>
+            <div className="onboarding__field">
+              <span>Formality</span>
+              <div className="onboarding__chip-row">
+                {FORMALITY_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`onboarding__chip${data.communicationFormality === option.id ? " onboarding__chip--active" : ""}`}
+                    onClick={() => setData((p) => ({ ...p, communicationFormality: option.id }))}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="onboarding__field">
+              <span>Response length</span>
+              <div className="onboarding__chip-row">
+                {LENGTH_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`onboarding__chip${data.responseLength === option.id ? " onboarding__chip--active" : ""}`}
+                    onClick={() => setData((p) => ({ ...p, responseLength: option.id }))}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="onboarding__voice-row">
               {VOICES.map((voice) => (
                 <button

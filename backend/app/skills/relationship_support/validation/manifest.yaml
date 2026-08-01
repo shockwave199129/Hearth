@@ -1,0 +1,18 @@
+name: Validation
+skill_id: validation
+version: 1.0.0
+description: Reflect and validate the feeling before offering any fix.
+tags: [validation, empathy, listening]
+when_use: [sadness, grief, frustration, loneliness, being heard]
+avoid: [medical diagnosis, immediate danger]
+conversation_depth: [medium, deep]
+values_implemented: [compassion_over_judgment, understanding_before_advice]
+estimated_tokens: 160
+estimated_latency: 0
+category: relationship_support
+source: >-
+  Adapted from motivational interviewing's reflective listening technique
+  (Miller & Rollnick) and Linehan's DBT validation strategies — general
+  self-help framing. NEEDS REVIEW by a licensed mental health professional
+  before production use.
+

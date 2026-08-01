@@ -1,0 +1,18 @@
+name: Sleep Hygiene
+skill_id: sleep_hygiene
+version: 1.0.0
+description: Practical habits that make it easier to fall and stay asleep.
+tags: [sleep, insomnia, bedtime, rest]
+when_use: [sleep, bedtime, insomnia, racing thoughts at night]
+avoid: [panic, acute distress]
+conversation_depth: [medium, deep]
+values_implemented: [presence_over_perfection, hope_over_false_reassurance]
+estimated_tokens: 150
+estimated_latency: 0
+category: lifestyle
+source: >-
+  Adapted from standard sleep-hygiene guidance used in CBT-I (cognitive
+  behavioral therapy for insomnia) — general self-help framing, not a
+  treatment protocol. NEEDS REVIEW by a licensed mental health professional
+  before production use.
+

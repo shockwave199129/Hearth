@@ -175,6 +175,43 @@ STT_MODELS_DIR = MODELS_DIR / "stt"
 TTS_MODELS_DIR = MODELS_DIR / "tts"
 EMBEDDING_MODELS_DIR = MODELS_DIR / "embedding"
 
+
+def resolve_nlp_models_dir() -> Path | None:
+    """Locate exported hearth_ai ONNX package (tokenizer + heads).
+
+    Order: ``NLP_MODELS_DIR`` env → ``{MODELS_DIR}/nlp`` (setup install
+    path) → repo ``models/nlp`` (dev checkout). Returns None when no usable
+    package is found so workers can fail-soft.
+
+    Populate the install path with ``app.setup.nlp_models.ensure_nlp_models``
+    (also called from ``download_models`` / ``scripts/setup.py``).
+    """
+    candidates: list[Path] = []
+    env = os.environ.get("NLP_MODELS_DIR", "").strip()
+    if env:
+        candidates.append(Path(env).expanduser())
+    candidates.append(MODELS_DIR / "nlp")
+    # Dev: repo root is parent of backend/ when running from source.
+    if not getattr(sys, "frozen", False):
+        candidates.append(BACKEND_DIR.parent / "models" / "nlp")
+    for path in candidates:
+        if (path / "manifest.json").is_file() and (path / "tokenizer.json").is_file():
+            return path
+    return None
+
+
+# Resolved at import; re-call resolve_nlp_models_dir() after ensure_nlp_models
+# if you need a post-install path in the same process.
+NLP_MODELS_DIR = resolve_nlp_models_dir()
+NLP_MODELS_INSTALL_DIR = MODELS_DIR / "nlp"
+# Public-read bucket holding the hearth_ai-exported ONNX package (same
+# relative layout as repo models/nlp/), fetched at first run when no local
+# copy is bundled or checked out — see app/setup/nlp_models.py.
+NLP_MODELS_BUCKET_URL = os.environ.get(
+    "NLP_MODELS_BUCKET_URL",
+    "https://hearth-sub.s3.ap-south-1.amazonaws.com/hearth_ai/models/nlp",
+)
+
 # Parler-TTS weights live here as a plain directory (snapshot_download
 # local_dir) — not the hub cache's blobs/snapshots symlink layout.
 TTS_PARLER_REPO = "parler-tts/parler-tts-tiny-v1"
@@ -208,25 +245,6 @@ for {name}. Everything you write is spoken aloud, not read — never use \
 lists, headers, markdown, or emoji, just plain talk. Always validate their feelings first; only offer a \
 suggestion if it fits naturally, don't force one onto every reply."""
 
-MEMORY_SYSTEM_PROMPT_ADDITION = """
-You have memory tools (list_memories, get_memory, search_memories,
-create_memory, update_memory, delete_memory). Check what you already know
-before assuming you don't, and before saving something new — update an
-existing memory instead of creating a near-duplicate one. Keep memory
-accurate as the person's situation changes (e.g. a resolved stressor).
-Manage memory quietly in the background — don't narrate memory operations
-to the user or announce what you're saving/updating/removing unless they
-directly ask what you remember."""
-
-# See project-plan.md §6 — pointer only, never the library content itself.
-SKILLS_SYSTEM_PROMPT_ADDITION = """
-You have skills tools (list_skills, get_skill) — reference material on
-support techniques like grounding, validation language, and reframing. Call
-list_skills only when a specific technique might genuinely help right now,
-not on every turn. Rework whatever get_skill returns into a short, spoken,
-conversational reply in your own words — never read a skill file back
-verbatim, and never turn a reply into a lecture, script, or numbered list."""
-
 # Templated fresh each turn with the current date and check-in status — see
 # project-plan.md §8. Deliberately inlined as scalar state rather than gated
 # behind a tool, unlike memory/skills, since it's a single fact not content.
@@ -234,8 +252,19 @@ CHECKIN_PROMPT_TEMPLATE = """
 Today's date: {date}. {checkin_status} If it's been a day or more, or you
 never have, weave one genuine check-in about how they're doing into this
 reply — naturally, the way a friend would ask, not as a separate scripted
-question. Skip it if you already asked recently. The moment you've asked,
-call mark_checkin — once per check-in, not once per turn."""
+question. Skip it if you already asked recently."""
+
+# Heuristic used by main.py to detect that a reply actually wove in a
+# check-in question, so `checkin.state` gets updated without relying on an
+# LLM tool call (there is no tool-calling loop in the live turn path).
+CHECKIN_QUESTION_PHRASES = (
+    "how are you feeling",
+    "how are you doing",
+    "how have you been",
+    "how's everything going",
+    "how is everything going",
+    "how's it going for you",
+)
 
 # Rolling short-term window: summarize the oldest chunk once the session
 # exceeds this many raw turns. See project-plan.md §4 (short-term memory).
@@ -246,12 +275,15 @@ SHORT_TERM_SUMMARIZE_CHUNK = 10
 # verbatim on a crisis-detector trigger, in place of any LLM-generated
 # reply. NEEDS REVIEW by a licensed mental health professional before
 # production use, same caveat as the skills library.
+#
+# Deliberately does NOT name a specific resource/hotline — Book Vol 6 Ch7:
+# resource data (which changes over time and varies by region) lives in
+# safety2/resources/ and is assembled onto this opening line at runtime by
+# main.py's Pipeline._respond_to_safety, never hardcoded into this string.
 SAFETY_RESPONSE_TEXT = (
     "I want to pause here — it sounds like you're going through something "
     "really serious, and I care about your safety more than anything else "
-    "right now. Please reach out to the 988 Suicide & Crisis Lifeline "
-    "(call or text 988 in the US) or a trusted person near you right now — "
-    "you don't have to go through this alone."
+    "right now. You don't have to go through this alone."
 )
 SAFETY_AUDIO_PATH = BACKEND_DIR / "app" / "safety" / "safety_audio" / "response.wav"
 
@@ -261,3 +293,15 @@ SAFETY_AUDIO_PATH = BACKEND_DIR / "app" / "safety" / "safety_audio" / "response.
 # flagged as needing real review alongside the rest of the safety layer.
 ESCALATION_WINDOW_DAYS = 1
 ESCALATION_TRIGGER_COUNT = 2
+
+# Optional SMTP config for app/safety/escalation.py's EmailNotifier — unset
+# by default, which keeps escalation on the logged stub (LoggedNotifier).
+# Setting all of these (e.g. via backend/.env) switches "email"-method
+# escalation to actually sending, using stdlib smtplib — no third-party
+# SMS provider is wired (that needs a chosen, paid provider and its own
+# credentials), so "sms"-method escalation stays a logged stub regardless.
+SAFETY_SMTP_HOST = os.environ.get("SAFETY_SMTP_HOST", "")
+SAFETY_SMTP_PORT = int(os.environ.get("SAFETY_SMTP_PORT", "587"))
+SAFETY_SMTP_USERNAME = os.environ.get("SAFETY_SMTP_USERNAME", "")
+SAFETY_SMTP_PASSWORD = os.environ.get("SAFETY_SMTP_PASSWORD", "")
+SAFETY_SMTP_FROM_ADDRESS = os.environ.get("SAFETY_SMTP_FROM_ADDRESS", "")

@@ -1,0 +1,3 @@
+input: "What's a good way to fall asleep faster when my brain won't slow down?"
+expected_category: none
+expected_route: ordinary

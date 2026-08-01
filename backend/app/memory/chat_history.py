@@ -128,3 +128,18 @@ def delete_all_for_user(user_id: str) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def session_start_timestamps(user_id: str) -> list[datetime]:
+    """Earliest `created_at` per distinct session, ordered — the real
+    session-boundary history `app.learning.attachment`'s contact-urgency
+    trend (Book Vol 7 Ch 8) needs, rather than raw per-message timestamps."""
+    conn = get_connection(CHAT_HISTORY_DB_PATH)
+    try:
+        rows = conn.execute(
+            "SELECT MIN(created_at) FROM chat_history WHERE user_id = ? GROUP BY session_id ORDER BY MIN(created_at) ASC",
+            (user_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [datetime.fromisoformat(r[0]) for r in rows if r[0]]

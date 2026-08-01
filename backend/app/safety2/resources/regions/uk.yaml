@@ -1,0 +1,29 @@
+# Region-specific resources layered on top of global.yaml when the
+# profile's region is "uk" (Book Vol 6 Ch 7). Public, well-known services.
+last_updated: "2026-07-30"
+source_notes: >-
+  Verified against each service's own public-facing description as of
+  last_updated. NEEDS REVIEW by a qualified safety/clinical professional on
+  an ongoing basis.
+resources:
+  - id: uk_samaritans
+    title: Samaritans
+    description: "Call 116 123, free, 24/7, from any phone in the UK or Ireland."
+    contact: "116 123"
+    region: uk
+    category: acute_self_risk
+    verified: true
+  - id: uk_shout_crisis_text_line
+    title: Shout Crisis Text Line
+    description: "Free, 24/7 text-based crisis support. Text SHOUT to 85258."
+    contact: "85258"
+    region: uk
+    category: acute_self_risk
+    verified: true
+  - id: uk_national_domestic_abuse_helpline
+    title: National Domestic Abuse Helpline
+    description: "Call 0808 2000 247, free and confidential, 24/7."
+    contact: "0808 2000 247"
+    region: uk
+    category: disclosed_harm_to_others
+    verified: true

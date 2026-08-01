@@ -1,0 +1,44 @@
+# Hearth IntentHead — single-label (CrossEntropyLoss)
+# Companion "need" intents (not MASSIVE/CLINC assistant commands).
+task: intent
+loss: cross_entropy
+multi_label: false
+num_labels: 10
+
+labels:
+  - vent
+  - validate
+  - comfort
+  - celebrate
+  - advise
+  - inquire
+  - plan
+  - small_talk
+  - meta
+  - unknown
+
+# Source dataset → Hearth intent
+source_maps:
+  empathetic_dialogues_v2_behavior:
+    "I'm in a negative mood, please comfort me.": comfort
+    "I'm in a positive mood, please congratulate me and praise me.": celebrate
+    "please give me some advices.": advise
+    "ask me for further details": inquire
+  daily_dialog_act:
+    inform: vent
+    question: inquire
+    directive: advise
+    commissive: plan
+  tanaos:
+    greeting: meta
+    farewell: meta
+    thank_you: meta
+    affirmation: meta
+    negation: meta
+    small_talk: small_talk
+    bot_capabilities: meta
+    feedback_positive: meta
+    feedback_negative: meta
+    clarification: inquire
+    suggestion: advise
+    language_change: meta

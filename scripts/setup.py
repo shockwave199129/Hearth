@@ -15,18 +15,15 @@ normal way and only the model download step below is still needed.
 NOT downloaded here, by design:
 - Moonshine (STT) — the `moonshine-voice` package auto-fetches/caches its
   own weights on first use (see backend/app/stt/moonshine_engine.py).
-- Parler-TTS-Tiny-v1 (TTS, tiers S/A) — `ParlerTTSForConditionalGeneration
-  .from_pretrained()` auto-downloads from HuggingFace on first call (see
-  backend/app/tts/tts_engines.py). Needs internet + disk on first real
-  run, same as any other first-use cache.
-- Kokoro-82M (TTS, tiers B/C) — KokoroEngine's `hf_hub_download()` calls
-  against NeuML/kokoro-fp16-onnx (model.onnx, voices.json) happen lazily on
-  first engine construction, same as Parler above, not here.
 
 Downloaded here:
 - LFM2.5 GGUF (LLM) for the detected tier, from LiquidAI's official repo.
 - EmbeddingGemma-300M Q8_0 GGUF (long-term memory embeddings) — needed on
   every tier.
+- Parler or Kokoro TTS weights for the detected tier.
+- Hearth NLP ONNX package when present under repo ``models/nlp`` or
+  ``backend/bundled/nlp`` — copied to ``{MODELS_DIR}/nlp``. Optional;
+  missing is OK (classifiers fail-soft).
 """
 import sys
 from pathlib import Path
@@ -36,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from app.hardware.detect import detect_hardware
 from app.hardware.tier_manager import pick_tier
 from app.setup.models import download_models
+from app.setup.nlp_models import ensure_nlp_models
 
 
 def main() -> None:
@@ -43,16 +41,18 @@ def main() -> None:
     tier = pick_tier(hw)
     print(f"Detected tier {tier.tier} (RAM: {hw['ram_gb']} GB, GPU: {hw['gpu_name'] or 'none detected'})\n")
 
-    print("LLM + embeddings:")
+    print("LLM + embeddings + TTS + NLP:")
     download_models(tier, log=lambda msg: print(f"  {msg}"))
+    ensure_nlp_models(log=lambda msg: print(f"  {msg}"))
 
     if tier.tts_engine == "kokoro":
-        print("TTS: Kokoro-82M — no manual download, auto-fetches from HuggingFace on first run.")
+        print("TTS: Kokoro-82M — weights fetched above (or already present).")
     else:
-        print("TTS: Parler-TTS-Tiny-v1 — no manual download, auto-fetches from HuggingFace on first run.")
+        print("TTS: Parler-TTS-Tiny-v1 — weights fetched above (or already present).")
 
     print("STT: Moonshine — no manual download, auto-fetches/caches on first run.")
     print("\nDone. llama-server itself is a separate binary — see requirements-common.txt's LLM section.")
+    print("NLP: set NLP_MODELS_DIR to override; default install is {userdata}/models/nlp.")
 
 
 if __name__ == "__main__":

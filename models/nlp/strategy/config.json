@@ -1,0 +1,26 @@
+{
+  "hearth_config": {
+    "vocab_size": 32000,
+    "max_seq_len": 128,
+    "hidden_size": 512,
+    "num_layers": 16,
+    "num_heads": 8,
+    "head_dim": 64,
+    "ffn_hidden_size": 2048,
+    "dropout": 0.1,
+    "rope_theta": 10000.0,
+    "rms_norm_eps": 1e-06,
+    "pad_token_id": 0,
+    "target_encoder_params": 90000000
+  },
+  "artifact": "strategy",
+  "inputs": [
+    "pooled"
+  ],
+  "outputs": [
+    "logits"
+  ],
+  "opset": 17,
+  "parity_max_abs_diff": 3.814697265625e-06,
+  "graph_kind": "head_only"
+}

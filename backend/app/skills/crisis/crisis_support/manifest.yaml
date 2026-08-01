@@ -1,0 +1,18 @@
+name: Crisis Support
+skill_id: crisis_support
+version: 1.0.0
+description: Direct, calm support content for crisis moments after detection.
+tags: [crisis, safety, support]
+when_use: [crisis, immediate danger, suicidal ideation, self harm]
+avoid: []
+conversation_depth: [medium, deep]
+values_implemented: [compassion_over_judgment, hope_over_false_reassurance, presence_over_perfection]
+estimated_tokens: 140
+estimated_latency: 0
+category: crisis
+source: >-
+  Crisis intervention content only — detection, escalation, and specific
+  resource provision belong to the Safety Framework (safety2/), not this
+  skill. NEEDS REVIEW by a licensed mental health professional before
+  production use.
+
