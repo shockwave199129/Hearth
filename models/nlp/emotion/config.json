@@ -15,12 +15,12 @@
   },
   "artifact": "emotion",
   "inputs": [
-    "input_ids",
-    "attention_mask"
+    "pooled"
   ],
   "outputs": [
     "logits"
   ],
   "opset": 17,
-  "parity_max_abs_diff": 4.76837158203125e-06
+  "parity_max_abs_diff": 2.86102294921875e-06,
+  "graph_kind": "head_only"
 }

@@ -15,12 +15,12 @@
   },
   "artifact": "strategy",
   "inputs": [
-    "input_ids",
-    "attention_mask"
+    "pooled"
   ],
   "outputs": [
     "logits"
   ],
   "opset": 17,
-  "parity_max_abs_diff": 3.993511199951172e-06
+  "parity_max_abs_diff": 3.814697265625e-06,
+  "graph_kind": "head_only"
 }

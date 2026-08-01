@@ -15,8 +15,7 @@
   },
   "artifact": "memory",
   "inputs": [
-    "input_ids",
-    "attention_mask"
+    "pooled"
   ],
   "outputs": [
     "store_logit",
@@ -24,5 +23,6 @@
     "importance_logit"
   ],
   "opset": 17,
-  "parity_max_abs_diff": 1.9073486328125e-06
+  "parity_max_abs_diff": 3.337860107421875e-06,
+  "graph_kind": "head_only"
 }

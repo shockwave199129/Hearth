@@ -15,12 +15,12 @@
   },
   "artifact": "intent",
   "inputs": [
-    "input_ids",
-    "attention_mask"
+    "pooled"
   ],
   "outputs": [
     "logits"
   ],
   "opset": 17,
-  "parity_max_abs_diff": 3.814697265625e-06
+  "parity_max_abs_diff": 1.430511474609375e-06,
+  "graph_kind": "head_only"
 }

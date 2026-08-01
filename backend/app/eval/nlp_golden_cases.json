@@ -62,9 +62,9 @@
         ]
       },
       "snapshot": {
-        "emotion": "anxiety",
-        "intent": "comfort",
-        "strategy": "reflect",
+        "emotion": "unknown",
+        "intent": "vent",
+        "strategy": "listen",
         "memory_store": true,
         "memory_type": "boundary"
       }
@@ -194,11 +194,11 @@
         ]
       },
       "snapshot": {
-        "emotion": "anxiety",
+        "emotion": "unknown",
         "intent": "vent",
-        "strategy": "validate",
+        "strategy": "advise",
         "memory_store": true,
-        "memory_type": "boundary"
+        "memory_type": "other"
       }
     },
     {
@@ -260,9 +260,9 @@
         ]
       },
       "snapshot": {
-        "emotion": "sadness",
-        "intent": "celebrate",
-        "strategy": "listen",
+        "emotion": "joy",
+        "intent": "vent",
+        "strategy": "ask_question",
         "memory_store": true,
         "memory_type": "other"
       }
@@ -326,11 +326,11 @@
         ]
       },
       "snapshot": {
-        "emotion": "pride",
+        "emotion": "joy",
         "intent": "small_talk",
         "strategy": "reflect",
-        "memory_store": false,
-        "memory_type": null
+        "memory_store": true,
+        "memory_type": "episodic"
       }
     },
     {
@@ -458,11 +458,11 @@
         ]
       },
       "snapshot": {
-        "emotion": "neutral",
-        "intent": "celebrate",
-        "strategy": "listen",
+        "emotion": "unknown",
+        "intent": "inquire",
+        "strategy": "boundary",
         "memory_store": true,
-        "memory_type": "boundary"
+        "memory_type": "emotional"
       }
     },
     {
@@ -524,9 +524,9 @@
         ]
       },
       "snapshot": {
-        "emotion": "gratitude",
+        "emotion": "unknown",
         "intent": "vent",
-        "strategy": "listen",
+        "strategy": "validate",
         "memory_store": true,
         "memory_type": "person"
       }
@@ -593,8 +593,8 @@
         "emotion": "hope",
         "intent": "advise",
         "strategy": "advise",
-        "memory_store": true,
-        "memory_type": "goal"
+        "memory_store": false,
+        "memory_type": null
       }
     },
     {
@@ -660,7 +660,7 @@
         "intent": "meta",
         "strategy": "encourage",
         "memory_store": true,
-        "memory_type": "episodic"
+        "memory_type": "other"
       }
     }
   ]
