@@ -19,7 +19,7 @@ from hearth_ai.labels import MEMORY_TYPES, memory_example_to_tensors
 from hearth_ai.models import HearthEncoder, HearthModel, MemoryHead
 from hearth_ai.trainer.dataset import HearthDataset
 from hearth_ai.trainer.losses import memory_loss
-from hearth_ai.trainer.train import Trainer
+from hearth_ai.trainer.train import Trainer, resolve_device
 
 from _train_common import (
     ROOT,
@@ -89,7 +89,7 @@ def main() -> None:
     model = HearthModel(HearthEncoder(cfg), MemoryHead(cfg.hidden_size))
     print(f"Memory model params: {model.num_parameters()/1e6:.2f}M")
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = resolve_device()
     warm = args.warm_start or str(ROOT / "checkpoints/emotion/best.pt")
     if os.path.isfile(warm):
         load_encoder_weights(model, warm, device)

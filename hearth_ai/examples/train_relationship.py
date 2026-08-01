@@ -19,7 +19,7 @@ from hearth_ai.labels import RELATIONSHIP_SIGNALS, relationship_example_to_list
 from hearth_ai.models import HearthEncoder, HearthModel, RelationshipHead
 from hearth_ai.trainer.dataset import HearthDataset
 from hearth_ai.trainer.losses import relationship_loss
-from hearth_ai.trainer.train import Trainer
+from hearth_ai.trainer.train import Trainer, resolve_device
 
 from _train_common import (
     ROOT,
@@ -82,7 +82,7 @@ def main() -> None:
     model = HearthModel(HearthEncoder(cfg), RelationshipHead(cfg.hidden_size))
     print(f"Relationship model params: {model.num_parameters()/1e6:.2f}M")
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = resolve_device()
     warm = args.warm_start or str(ROOT / "checkpoints/emotion/best.pt")
     if os.path.isfile(warm):
         load_encoder_weights(model, warm, device)

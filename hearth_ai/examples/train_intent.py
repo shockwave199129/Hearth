@@ -26,7 +26,7 @@ from hearth_ai.labels import INTENT_LABELS
 from hearth_ai.models import HearthEncoder, HearthModel, IntentHead
 from hearth_ai.trainer.dataset import HearthDataset
 from hearth_ai.trainer.losses import intent_loss
-from hearth_ai.trainer.train import Trainer
+from hearth_ai.trainer.train import Trainer, resolve_device
 
 from _train_common import (
     ROOT,
@@ -98,7 +98,7 @@ def main() -> None:
     model = HearthModel(encoder, IntentHead(cfg.hidden_size))
     print(f"Intent model params: {model.num_parameters() / 1e6:.2f}M  smoke={smoke}")
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = resolve_device()
     warm = args.warm_start
     if not warm:
         candidate = ROOT / "checkpoints" / "emotion" / "best.pt"

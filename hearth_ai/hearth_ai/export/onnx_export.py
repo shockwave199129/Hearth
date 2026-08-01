@@ -437,6 +437,27 @@ def export_head_only(
     return ExportResult(task, onnx_path, max_diff, True)
 
 
+def assert_vocab_consistency(tokenizer_path: Path | str, config: HearthConfig) -> None:
+    """Fail fast if the tokenizer's vocabulary size doesn't match the model config.
+
+    The parity check samples with ``torch.randint(0, config.vocab_size, ...)``,
+    so it structurally cannot catch a tokenizer/checkpoint mismatch — this
+    assertion fills that gap."""
+    tok_path = Path(tokenizer_path)
+    tok_data = json.loads(tok_path.read_text(encoding="utf-8"))
+    if "model" in tok_data and "vocab" in tok_data["model"]:
+        tok_vocab_size = len(tok_data["model"]["vocab"])
+    elif "added_tokens" in tok_data:
+        tok_vocab_size = len(tok_data.get("model", {}).get("vocab", {})) + len(tok_data["added_tokens"])
+    else:
+        raise ValueError(f"Cannot determine vocab size from {tok_path}")
+    if tok_vocab_size != config.vocab_size:
+        raise AssertionError(
+            f"Tokenizer vocab size ({tok_vocab_size}) != model config vocab_size "
+            f"({config.vocab_size}) — the tokenizer and checkpoint are mismatched."
+        )
+
+
 def export_all_shared_encoder(
     checkpoint_root: Path | str,
     out_root: Path | str,
@@ -460,6 +481,8 @@ def export_all_shared_encoder(
     checkpoint_root = Path(checkpoint_root)
     out_root = Path(out_root)
     out_root.mkdir(parents=True, exist_ok=True)
+
+    assert_vocab_consistency(tokenizer_src, config)
 
     rng = torch.Generator().manual_seed(seed)
     sample_ids = torch.randint(0, config.vocab_size, (batch_size, seq_len), dtype=torch.long, generator=rng)
@@ -536,6 +559,9 @@ def export_all(
     checkpoint_root = Path(checkpoint_root)
     out_root = Path(out_root)
     out_root.mkdir(parents=True, exist_ok=True)
+
+    if tokenizer_src is not None:
+        assert_vocab_consistency(tokenizer_src, config)
 
     rng = torch.Generator().manual_seed(seed)
     sample_ids = torch.randint(

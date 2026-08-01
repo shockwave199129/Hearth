@@ -4,6 +4,9 @@ Source order (first complete package wins):
   1. ``backend/bundled/nlp`` (packaged / optional ship)
   2. Repo ``models/nlp`` (dev checkout)
   3. Existing ``NLP_MODELS_DIR`` env if it already points at a complete tree
+  4. Public bucket download (``NLP_MODELS_BUCKET_URL``) — the normal path
+     for an installed app, since the ~336MB ONNX weights are gitignored
+     and never frozen into the installer itself.
 
 Destination is always ``{MODELS_DIR}/nlp`` so runtime resolution prefers the
 installed copy. Missing source → log and skip (fail-soft; app still runs).
@@ -13,10 +16,11 @@ from __future__ import annotations
 
 import os
 import shutil
+import urllib.request
 from pathlib import Path
 from typing import Callable
 
-from app.config import BACKEND_DIR, MODELS_DIR
+from app.config import BACKEND_DIR, MODELS_DIR, NLP_MODELS_BUCKET_URL
 
 ProgressFn = Callable[[str], None]
 
@@ -60,8 +64,51 @@ def find_nlp_source() -> Path | None:
     return None
 
 
+def _download_file(url: str, dest: Path, log: ProgressFn) -> None:
+    """Stream ``url`` into ``dest`` via a temp file + atomic replace, so a
+    crash/interrupt mid-download never leaves a half-written file behind
+    for ``nlp_package_complete`` to mistake as usable."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".partial")
+    if tmp.exists():
+        tmp.unlink()
+    log(f"downloading {url} ...")
+    with urllib.request.urlopen(url, timeout=600) as resp, tmp.open("wb") as out:
+        shutil.copyfileobj(resp, out, length=1024 * 1024)
+    tmp.replace(dest)
+
+
+def download_nlp_models(log: ProgressFn = print) -> Path | None:
+    """Fetch the ONNX package from ``NLP_MODELS_BUCKET_URL`` into
+    ``NLP_INSTALL_DIR``, one file per required relative path (the bucket
+    denies ``ListBucket`` for these credentials, so discovery isn't an
+    option — the required-file list is the source of truth on both ends).
+    """
+    if not NLP_MODELS_BUCKET_URL:
+        log("NLP_MODELS_BUCKET_URL not set — skipping NLP classifier download")
+        return None
+
+    log(f"downloading NLP classifiers from {NLP_MODELS_BUCKET_URL} ...")
+    for rel in _NLP_REQUIRED_RELATIVE:
+        dest = NLP_INSTALL_DIR / rel
+        if dest.is_file() and dest.stat().st_size > 0:
+            continue
+        try:
+            _download_file(f"{NLP_MODELS_BUCKET_URL}/{rel}", dest, log)
+        except OSError as exc:
+            log(f"NLP classifier download failed ({rel}: {exc}) — classifiers will fail-soft")
+            return None
+
+    if not nlp_package_complete(NLP_INSTALL_DIR):
+        log(f"NLP download incomplete at {NLP_INSTALL_DIR}")
+        return None
+    log("NLP classifiers downloaded")
+    return NLP_INSTALL_DIR
+
+
 def ensure_nlp_models(log: ProgressFn = print) -> Path | None:
-    """Copy NLP classifiers into ``MODELS_DIR/nlp`` if not already present.
+    """Copy or download NLP classifiers into ``MODELS_DIR/nlp`` if not
+    already present.
 
     Returns the install directory when usable, else None.
     """
@@ -71,8 +118,7 @@ def ensure_nlp_models(log: ProgressFn = print) -> Path | None:
 
     src = find_nlp_source()
     if src is None:
-        log("NLP package not found (bundled/ or models/nlp) — classifiers will fail-soft")
-        return None
+        return download_nlp_models(log)
 
     if src.resolve() == NLP_INSTALL_DIR.resolve():
         log(f"NLP classifiers already at install path {NLP_INSTALL_DIR}")

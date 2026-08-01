@@ -204,6 +204,13 @@ def resolve_nlp_models_dir() -> Path | None:
 # if you need a post-install path in the same process.
 NLP_MODELS_DIR = resolve_nlp_models_dir()
 NLP_MODELS_INSTALL_DIR = MODELS_DIR / "nlp"
+# Public-read bucket holding the hearth_ai-exported ONNX package (same
+# relative layout as repo models/nlp/), fetched at first run when no local
+# copy is bundled or checked out — see app/setup/nlp_models.py.
+NLP_MODELS_BUCKET_URL = os.environ.get(
+    "NLP_MODELS_BUCKET_URL",
+    "https://hearth-sub.s3.ap-south-1.amazonaws.com/hearth_ai/models/nlp",
+)
 
 # Parler-TTS weights live here as a plain directory (snapshot_download
 # local_dir) — not the hub cache's blobs/snapshots symlink layout.

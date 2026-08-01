@@ -49,6 +49,21 @@ from torch.utils.data import DataLoader
 from .dataset import make_collate_fn
 
 
+def resolve_device() -> str:
+    """Best available torch device: CUDA/ROCm > Apple MPS > CPU.
+
+    ``torch.cuda.is_available()`` also reports True for ROCm builds (ROCm
+    is exposed through the same ``cuda`` device namespace), so this covers
+    NVIDIA and AMD-on-Linux. Apple Silicon has no CUDA, so without this
+    check it silently fell back to CPU instead of using Metal via MPS.
+    """
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 def resolve_amp_dtype(amp: str, device: str) -> Optional[torch.dtype]:
     """Autocast dtype for ``amp`` in {"off", "bf16", "fp16", "auto"}, or None.
 
@@ -89,7 +104,7 @@ class Trainer:
         self.val_dataset = val_dataset
         self.loss_fn = loss_fn
         self.collate_fn = make_collate_fn(pad_id)
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device or resolve_device()
         self.checkpoint_dir = checkpoint_dir
         self.grad_clip = grad_clip
         self.grad_accum_steps = max(1, grad_accum_steps)
@@ -329,7 +344,7 @@ class MultiTaskTrainer:
         self.val_datasets = val_datasets or {}
         self.loss_fns = loss_fns
         self.collate_fn = make_collate_fn(pad_id)
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device or resolve_device()
         self.checkpoint_root = checkpoint_root
         self.grad_clip = grad_clip
         self.log_every = log_every
