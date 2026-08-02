@@ -11,10 +11,22 @@ import { getStoredTheme, setStoredTheme, type Theme } from "../lib/theme";
 import { friendlyActionError } from "../lib/errors";
 import { useAlert } from "../lib/alerts";
 import * as notifications from "../lib/notifications";
+import {
+  VOICE_OPTIONS,
+  VOICE_STYLE_OPTIONS,
+  type PreferredVoice,
+  type VoiceStyleId,
+} from "../lib/voiceStyles";
 
 export function Settings() {
   const { status, error } = useTierStatus();
-  const { profile, error: profileError, setSpeakReplies, setCommunicationPreferences } = useProfile();
+  const {
+    profile,
+    error: profileError,
+    setSpeakReplies,
+    setCommunicationPreferences,
+    setVoicePreferences,
+  } = useProfile();
   const { status: checkinStatus, error: checkinError } = useCheckins();
   const { status: safetyStatus, error: safetyError } = useSafetyStatus();
   const { showAlert } = useAlert();
@@ -23,6 +35,8 @@ export function Settings() {
   const [speakRepliesError, setSpeakRepliesError] = useState<string | null>(null);
   const [prefsBusy, setPrefsBusy] = useState(false);
   const [prefsError, setPrefsError] = useState<string | null>(null);
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(notifications.isEnabledPreference);
 
   const handleThemeChange = (next: Theme) => {
@@ -65,6 +79,25 @@ export function Settings() {
       showAlert({ type: "error", message });
     } finally {
       setPrefsBusy(false);
+    }
+  };
+
+  const handleVoicePreferencesUpdate = async (
+    preferredVoice: PreferredVoice,
+    voiceStyle: VoiceStyleId,
+  ) => {
+    if (!profile) return;
+    setVoiceBusy(true);
+    setVoiceError(null);
+    try {
+      await setVoicePreferences({ preferred_voice: preferredVoice, voice_style: voiceStyle });
+      showAlert({ type: "success", message: "Speaking voice updated — you'll hear it on the next reply." });
+    } catch (err) {
+      const message = friendlyActionError(err, "Settings.voicePreferences", "Couldn't update that setting.");
+      setVoiceError(message);
+      showAlert({ type: "error", message });
+    } finally {
+      setVoiceBusy(false);
     }
   };
 
@@ -172,7 +205,11 @@ export function Settings() {
             </div>
             <div>
               <dt>Voice</dt>
-              <dd>{profile.preferred_voice}</dd>
+              <dd>
+                {profile.preferred_voice} ·{" "}
+                {VOICE_STYLE_OPTIONS.find((s) => s.id === profile.voice_style)?.label ??
+                  profile.voice_style}
+              </dd>
             </div>
             <div>
               <dt>Formality</dt>
@@ -217,6 +254,47 @@ export function Settings() {
               ))}
             </div>
             {prefsError && <p className="settings__error">{prefsError}</p>}
+          </div>
+        )}
+        {profile && (
+          <div className="settings__field">
+            <span className="settings__field-label">Speaking voice</span>
+            <div className="settings__segmented">
+              {VOICE_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  className={`settings__segment${profile.preferred_voice === option.id ? " settings__segment--active" : ""}`}
+                  onClick={() =>
+                    option.id !== profile.preferred_voice &&
+                    handleVoicePreferencesUpdate(option.id, profile.voice_style)
+                  }
+                  disabled={voiceBusy}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <span className="settings__field-label">Way of speaking</span>
+            <div className="settings__segmented">
+              {VOICE_STYLE_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  className={`settings__segment${profile.voice_style === option.id ? " settings__segment--active" : ""}`}
+                  onClick={() =>
+                    option.id !== profile.voice_style &&
+                    handleVoicePreferencesUpdate(profile.preferred_voice, option.id)
+                  }
+                  disabled={voiceBusy}
+                  title={option.blurb}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <p className="settings__hint">
+              {VOICE_STYLE_OPTIONS.find((s) => s.id === profile.voice_style)?.blurb}
+            </p>
+            {voiceError && <p className="settings__error">{voiceError}</p>}
           </div>
         )}
         {profile && (

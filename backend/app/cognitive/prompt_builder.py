@@ -40,7 +40,7 @@ class PromptBuilder:
 
         sections: list[tuple[str, str]] = []
         sections.append(("identity", f"You are {profile.companion_name}, a warm, calm companion for {preferences.preferred_name}."))
-        sections.append(("style", self._style_block(preferences)))
+        sections.append(("style", self._style_block(preferences, profile.speak_replies)))
         sections.append(("lifecycle", self._lifecycle_block(mind_state)))
         sections.append(("communication", self._communication_block(preferences, traits, mind_state)))
         sections.append(("active_listening", self._active_listening_block(mind_state, traits)))
@@ -61,6 +61,9 @@ class PromptBuilder:
         if mind_state.current_topic:
             sections.append(("topic", f"Current topic: {mind_state.current_topic}"))
         sections.append(("user_message", f"User said: {transcript.strip()}"))
+        prosody_block = self._prosody_block(profile)
+        if prosody_block:
+            sections.append(("prosody", prosody_block))
         sections.append(("output", self._output_block(preferences, mind_state)))
 
         prompt = "\n\n".join(text for _, text in sections if text)
@@ -74,6 +77,7 @@ class PromptBuilder:
                 "nlp_signals",
                 "context",
                 "topic",
+                "prosody",
             ],
             max_tokens=self._max_tokens(preferences, mind_state),
             priority_order=[
@@ -89,6 +93,7 @@ class PromptBuilder:
                 "context",
                 "topic",
                 "user_message",
+                "prosody",
                 "output",
             ],
             fallback_strategy="drop_optional_sections_first",
@@ -101,7 +106,7 @@ class PromptBuilder:
         preview = "\n".join(useful[:6])
         return f"{label}:\n{preview}"
 
-    def _style_block(self, preferences: CommunicationPreferences) -> str:
+    def _style_block(self, preferences: CommunicationPreferences, speak_replies: bool) -> str:
         """Book Vol 2 Ch 7 — CommunicationPreferences are explicit and
         user-owned; Hearth never silently overrides them, including emoji
         usage, which used to be banned outright regardless of preference."""
@@ -126,14 +131,16 @@ class PromptBuilder:
         else:
             emoji = "Use at most one emoji, only when it genuinely fits — most replies should have none."
 
-        return "\n".join(
-            [
-                tone,
-                length,
-                emoji,
-                "Never use markdown, numbered lists, bullet lists, or headers — everything you write is spoken aloud, not read.",
-            ]
+        # The markdown ban holds either way, but only the spoken path can
+        # honestly claim "this gets read aloud" — with speak_replies off the
+        # reply is text on screen, and overclaiming there is just a wrong
+        # instruction the model has to reconcile.
+        formatting = (
+            "Never use markdown, numbered lists, bullet lists, or headers — everything you write is spoken aloud, not read."
+            if speak_replies
+            else "Never use markdown, numbered lists, bullet lists, or headers — write plain conversational prose."
         )
+        return "\n".join([tone, length, emoji, formatting])
 
     def _lifecycle_block(self, mind_state: MindState) -> str:
         """Book Vol 2 Ch 2's communication lifecycle — the communicative
@@ -278,6 +285,53 @@ class PromptBuilder:
                 f"Respect their explicit response length preference: {preferences.response_length}.",
             ]
         )
+
+    def _prosody_block(self, profile: UserProfile) -> str:
+        """Write for the voice, not just for the screen.
+
+        Parler splits control across two inputs: the description steers
+        gender, pitch, speaking rate and room/recording quality (that half
+        lives in tts/voice_styles.py, including the "very clear audio
+        quality" phrase their tips call for), while the transcript itself is
+        the *only* handle on prosody — commas become short breaks, sentence
+        ends become full stops, question marks lift the intonation. So the
+        punctuation the LLM emits is a real audio parameter, and this block
+        is where we ask for it deliberately instead of hoping.
+
+        Empty when speak_replies is off: none of this helps a reply that's
+        only ever read, and every unnecessary instruction costs a small model
+        attention it needs elsewhere.
+        """
+        if not profile.speak_replies:
+            return ""
+
+        # Written in exactly the punctuation it asks for, no dashes or
+        # semicolons. A 1.2B model copies the surface form of its prompt, so
+        # a block that breaks its own rules teaches the wrong habit.
+        lines = [
+            "Your reply is read aloud by a speech model, and your punctuation is the only prosody it has. Write for the ear.",
+            "- Put commas where you would naturally pause or take a breath. Each one becomes a short break in the speech.",
+            "- One idea per sentence, each ending in a full stop. Long unpunctuated runs make the voice rush and slur.",
+            "- Use a question mark only for an actual question. It lifts the intonation at the end.",
+            "- Avoid ellipses, dashes, semicolons, brackets, asterisks and quotation marks. They are either read out literally or make the delivery stumble.",
+            "- Write numbers, times and abbreviations the way you would say them, so 'eight in the evening', not '8pm'.",
+            "- No block capitals and no stretched spellings for emphasis. Carry emphasis in word choice instead.",
+        ]
+        if profile.emoji_usage != "none":
+            lines.append(
+                "- If you use an emoji, put it at the very end. Mid-sentence it interrupts the spoken line."
+            )
+        # The style preset already sets the pace in the Parler description.
+        # These nudge the text to match it rather than fight it.
+        if profile.voice_style == "gentle":
+            lines.append(
+                "- This voice already speaks slowly, so lean on commas. The pauses are what make it feel unhurried."
+            )
+        elif profile.voice_style == "bright":
+            lines.append(
+                "- This voice speaks slightly fast, so keep sentences short. That lift should read as warmth, not hurry."
+            )
+        return "\n".join(lines)
 
     def _output_block(self, preferences: CommunicationPreferences, mind_state: MindState) -> str:
         if preferences.response_length == "short":

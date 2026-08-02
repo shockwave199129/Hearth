@@ -49,6 +49,7 @@ from app.onboarding.profile_store import (
     update_region,
     update_relationship_state,
     update_speak_replies,
+    update_voice_preferences,
 )
 from app.safety import crisis_detector, escalation
 from app.setup import orchestrator
@@ -67,6 +68,7 @@ from app.memory2.retrieval import retrieve as memory2_retrieve
 from app.skills.loader import get_skill, load_catalog
 from app.stt.moonshine_engine import MoonshineEngine
 from app.tts.tts_engines import get_tts_engine
+from app.tts.voice_styles import VOICE_STYLE_IDS, VOICES
 
 logger = logging.getLogger("hearth")
 
@@ -223,7 +225,11 @@ class Pipeline:
         last_exc: Exception | None = None
         for attempt in range(2):
             try:
-                reply_audio = self.tts.synthesize(reply_text, voice=self.profile.preferred_voice)
+                reply_audio = self.tts.synthesize(
+                    reply_text,
+                    voice=self.profile.preferred_voice,
+                    style=self.profile.voice_style,
+                )
                 pcm = np.asarray(reply_audio, dtype=np.float32).reshape(-1)
                 if pcm.size == 0:
                     raise RuntimeError("TTS returned empty audio")
@@ -789,21 +795,34 @@ class ProfileSettingsUpdate(BaseModel):
     communication_formality: str | None = None
     response_length: str | None = None
     emoji_usage: str | None = None
+    preferred_voice: str | None = None
+    voice_style: str | None = None
     region: str | None = None
 
 
 @app.put("/api/profile")
 def api_update_profile(payload: ProfileSettingsUpdate) -> UserProfile:
-    """Lets Settings flip lightweight preferences (currently just
-    speak_replies, plus the explicit CommunicationPreferences from Book Vol 2
-    Ch 7 — formality, response length, emoji usage) without redoing the
-    whole onboarding flow. These are user-owned and never silently
-    overridden by anything Hearth learns (Book Vol 2 Ch 7)."""
+    """Lets Settings flip lightweight preferences (speak_replies, the
+    spoken voice + speaking-style preset, plus the explicit
+    CommunicationPreferences from Book Vol 2 Ch 7 — formality, response
+    length, emoji usage) without redoing the whole onboarding flow. These
+    are user-owned and never silently overridden by anything Hearth learns
+    (Book Vol 2 Ch 7)."""
     user_id = get_active_user_id()
     profile = get_profile(user_id) if user_id else None
     if profile is None:
         raise HTTPException(status_code=404, detail="no profile saved yet")
     update_speak_replies(user_id, payload.speak_replies)
+    if payload.preferred_voice is not None or payload.voice_style is not None:
+        preferred_voice = payload.preferred_voice or profile.preferred_voice
+        voice_style = payload.voice_style or profile.voice_style
+        # Strict here even though the TTS path falls back — a rejected write
+        # is a bug the caller can see, a silently coerced one isn't.
+        if preferred_voice not in VOICES:
+            raise HTTPException(status_code=400, detail=f"unknown voice {preferred_voice!r}")
+        if voice_style not in VOICE_STYLE_IDS:
+            raise HTTPException(status_code=400, detail=f"unknown voice style {voice_style!r}")
+        update_voice_preferences(user_id, preferred_voice=preferred_voice, voice_style=voice_style)
     if payload.communication_formality is not None and payload.response_length is not None:
         update_communication_preferences(
             user_id,
@@ -816,7 +835,10 @@ def api_update_profile(payload: ProfileSettingsUpdate) -> UserProfile:
     updated = get_profile(user_id)
     _require_pipeline()
     # A plain attribute swap, not set_profile() — these preferences only
-    # affect prompt shaping, not the runtime tier or profile identity.
+    # affect prompt shaping and the per-call TTS arguments, not the runtime
+    # tier or profile identity. No engine reload: voice and style are read
+    # off the profile at each synthesize() call, so the next reply already
+    # speaks the new way.
     _pipeline.profile = updated
     return updated
 
@@ -1030,7 +1052,11 @@ def api_replay_chat_history(row_id: int) -> Response:
     if turn["role"] != "assistant":
         raise HTTPException(status_code=400, detail="only assistant replies can be replayed")
     try:
-        audio = _pipeline.tts.synthesize(turn["content"], voice=_pipeline.profile.preferred_voice)
+        audio = _pipeline.tts.synthesize(
+            turn["content"],
+            voice=_pipeline.profile.preferred_voice,
+            style=_pipeline.profile.voice_style,
+        )
         if audio is None or len(np.asarray(audio).reshape(-1)) == 0:
             raise RuntimeError("TTS returned empty audio")
         wav_bytes = _pcm_to_wav_bytes(audio, _pipeline.tts.sample_rate)
