@@ -66,11 +66,38 @@ class StrategyPrediction:
     scores: dict[str, float]
 
 
+NLP_TASKS = ("emotion", "intent", "memory", "relationship", "strategy")
+
+
+def _read_graph_kind(root: Path) -> str:
+    try:
+        manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    except Exception:
+        return "full"
+    return str(manifest.get("graph_kind", "full"))
+
+
 def classify_available(models_dir: Path | None = None) -> bool:
+    """True only when ``models_dir`` can actually run a head.
+
+    Metadata presence is deliberately not sufficient. A source checkout
+    tracks manifest.json, tokenizer.json and every per-head config/labels
+    file while .gitignore excludes all ``*.onnx``, so a weights-less clone
+    would otherwise call itself available, then fail-soft to zeros on every
+    turn — and CI would run the golden suite against nothing and report the
+    empty result as a model regression.
+
+    The conditions here mirror what ``OnnxClassifier._init`` needs to reach
+    ``available = True``, so the two never disagree.
+    """
     root = models_dir or NLP_MODELS_DIR or resolve_nlp_models_dir()
     if root is None:
         return False
-    return (root / "manifest.json").is_file() and (root / "tokenizer.json").is_file()
+    if not ((root / "manifest.json").is_file() and (root / "tokenizer.json").is_file()):
+        return False
+    if _read_graph_kind(root) == "head_only" and not (root / "encoder" / "model.onnx").is_file():
+        return False
+    return any((root / task / "model.onnx").is_file() for task in NLP_TASKS)
 
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:
@@ -161,7 +188,7 @@ class OnnxClassifier:
                 logger.exception("Failed to load shared encoder ONNX session")
                 return
 
-        for task in ("emotion", "intent", "memory", "relationship", "strategy"):
+        for task in NLP_TASKS:
             onnx_path = self.models_dir / task / "model.onnx"
             labels_path = self.models_dir / task / "labels.json"
             if not onnx_path.is_file():

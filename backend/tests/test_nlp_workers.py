@@ -3,16 +3,27 @@
 from pathlib import Path
 import sys
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.cognitive.mind_state import MindState
 from app.cognitive.scheduler import CognitiveScheduler
 from app.config import resolve_nlp_models_dir
-from app.nlp.runtime import OnnxClassifier
+from app.nlp.runtime import OnnxClassifier, classify_available
 from app.safety2.worker import SafetyAssessment
 from app.workers.runner import NLP_WORKER_NAMES, NlpWorkerRunner
 
 _ORDINARY = SafetyAssessment(category="none", confidence=0.0, route="ordinary")
+
+# models/nlp/**/*.onnx is gitignored, so a fresh checkout (CI included) has
+# the metadata but no weights. Only the tests that need a head to actually
+# run are gated — the resolver, scheduler and fail-soft cases below are
+# weights-independent and must keep gating CI.
+requires_nlp_weights = pytest.mark.skipif(
+    not classify_available(),
+    reason="NLP ONNX weights not installed (models/nlp or NLP_MODELS_DIR)",
+)
 
 
 def test_resolve_nlp_models_dir_finds_repo_package():
@@ -22,6 +33,7 @@ def test_resolve_nlp_models_dir_finds_repo_package():
     assert (root / "tokenizer.json").is_file()
 
 
+@requires_nlp_weights
 def test_onnx_classifier_loads_and_predicts():
     clf = OnnxClassifier()
     assert clf.available
@@ -38,6 +50,7 @@ def test_onnx_classifier_loads_and_predicts():
     assert strat.strategy
 
 
+@requires_nlp_weights
 def test_nlp_worker_runner_updates_mind_state():
     mind = MindState()
     runner = NlpWorkerRunner()
@@ -77,6 +90,7 @@ def test_fail_soft_when_models_missing(tmp_path):
     assert mind.intent == "unknown"
 
 
+@requires_nlp_weights
 def test_finalize_communication_state_uses_real_classifier_signal():
     """End-to-end: schedule -> run NLP workers -> finalize should let the
     real hearth_ai intent/emotion heads (not just keyword heuristics) drive

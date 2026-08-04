@@ -5,12 +5,55 @@ from pathlib import Path
 import sys
 import tempfile
 
+import keyring
 import pytest
+from keyring.backend import KeyringBackend
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.cognitive.mind_state import MindState
 from app.onboarding.profile_schema import UserProfile
+
+
+class _InMemoryKeyring(KeyringBackend):
+    """Process-local stand-in for the OS keychain."""
+
+    priority = 1  # type: ignore[assignment]
+
+    def __init__(self):
+        super().__init__()
+        self._store: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self._store.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self._store[(service, username)] = password
+
+    def delete_password(self, service: str, username: str) -> None:
+        self._store.pop((service, username), None)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolate_keyring():
+    """Route app.security.crypto's key storage into memory for the suite.
+
+    Two reasons this is autouse rather than opt-in. Any test that touches an
+    encrypted store transitively calls ``get_or_create_key``, which on a
+    headless machine (CI, a container, a bare SSH session) has no viable
+    backend and raises NoKeyringError — the suite was failing 22 tests on
+    exactly that. Where a backend *does* exist, the unpatched code writes a
+    real secret into the developer's login keychain under the same service
+    name the shipped app uses, so running the tests mutated live user state.
+
+    Session-scoped: a keychain persists across a process, and tests like
+    test_phase2_memory's restart cases depend on the key staying stable
+    across the reopens they simulate.
+    """
+    previous = keyring.get_keyring()
+    keyring.set_keyring(_InMemoryKeyring())
+    yield
+    keyring.set_keyring(previous)
 
 
 @pytest.fixture

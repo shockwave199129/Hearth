@@ -55,9 +55,19 @@ jobs:
       # VM rather than the code. See backend/pytest.ini's marker docs and
       # tests/test_nlp_golden.py.
       #
-      # Note that models/nlp/**/*.onnx is gitignored, so the NLP golden
-      # suite skips here rather than running — that is a known coverage
-      # hole in this gate, not something it silently covers.
+      # Note that models/nlp/**/*.onnx is gitignored while the manifest,
+      # tokenizer and per-head config/labels JSON are tracked, so a checkout
+      # has NLP metadata and no weights. The weights-dependent tests (the
+      # golden suite, plus the three in tests/test_nlp_workers.py that need
+      # a head to actually run) skip here on `classify_available()` — which
+      # is why that predicate checks for *.onnx and not just the manifest.
+      # That is a known coverage hole in this gate, not something it
+      # silently covers: to close it, install the package first via
+      # app.setup.nlp_models.ensure_nlp_models (NLP_MODELS_BUCKET_URL).
+      #
+      # The runner also has no OS keychain, so anything touching
+      # security/crypto would raise NoKeyringError — tests/conftest.py
+      # installs an in-memory keyring backend for the session instead.
       - name: Test
         working-directory: backend
         run: pytest -m "not perf"
