@@ -191,10 +191,19 @@ for _pkg in _COLLECT_ALL_PACKAGES:
     _datas, _binaries, _hiddenimports = collect_all(_pkg)
     datas += _datas
     hiddenimports += _hiddenimports
-    # Filter out libmoonshine.so from binaries collected by collect_all()
+    # Filter out libmoonshine.so from binaries collected by collect_all() —
+    # macOS only. moonshine_voice ships this Linux ELF alongside macOS
+    # wheels' own native .dylib, and PyInstaller's macOS analysis fails
+    # trying to parse it. Linux/Windows builds need this exact file — it's
+    # the native STT lib app/stt/moonshine_engine.py loads at runtime, so
+    # dropping it unconditionally (as a prior refactor did, losing the
+    # platform guard this originally had) ships a Linux/Windows app with no
+    # STT engine, failing on first launch with "Failed to load dynlib/dll
+    # 'libmoonshine.so' ... Most likely this dynlib/dll was not found when
+    # the application was frozen."
     cleaned_binaries = []
     for source, dest_dir in _binaries:
-        if source.endswith("libmoonshine.so"):
+        if sys.platform == "darwin" and source.endswith("libmoonshine.so"):
             continue
         source_name = Path(source).name
         dest_name = f"{dest_dir}/{source_name}" if dest_dir else source_name
