@@ -28,7 +28,24 @@ desktop/     Tauri wrapper — packages frontend + backend into an installer
 scripts/     hardware_check.py (tier probe), setup.py (manual/dev-only
              model downloads — the packaged app now does this in-app)
 docs/        architecture.md, privacy.md
+hearth_ai/   submodule — the from-scratch multi-task NLP model (shared
+             encoder + emotion/intent/memory/relationship/strategy heads)
+             and its training + ONNX export pipeline. Lives in its own repo
+             (shockwave199129/hearth_ai) because it is a research/training
+             project on a different cadence to the app, which consumes only
+             its exported ONNX artifacts under models/nlp/.
 ```
+
+`hearth_ai/` being a submodule means a plain `git clone` leaves it empty:
+
+```bash
+git clone --recurse-submodules https://github.com/shockwave199129/Hearth.git
+# already cloned:  git submodule update --init --recursive
+```
+
+Nothing under `backend/` imports it at runtime, so an empty `hearth_ai/`
+still runs and tests the app — but `ruff check backend scripts hearth_ai`
+(the CI lint step) needs it populated.
 
 Hardware is auto-detected and mapped to a tier (S/A/B/C) that picks model
 sizes and quantizations accordingly — see `docs/architecture.md`'s

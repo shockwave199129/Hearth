@@ -1,0 +1,3 @@
+[submodule "hearth_ai"]
+	path = hearth_ai
+	url = https://github.com/shockwave199129/hearth_ai.git

@@ -34,16 +34,6 @@ The Book/
 .cursor/
 .codex/
 
-# hearth_ai prepared HF JSONL (regenerate via data/prepare/)
-hearth_ai/data/base/
-hearth_ai/data/emotion/
-hearth_ai/data/intent/
-hearth_ai/data/memory/
-hearth_ai/data/relationship/
-hearth_ai/data/strategy/
-hearth_ai/data/synthetic/
-hearth_ai/data/seed/
-hearth_ai/data/hearth_relationship_understanding.jsonl
-hearth_ai/data/hearth_relationship_understanding_backup.jsonl
-!hearth_ai/data/intent_sample.jsonl
-hearth_ai/checkpoints/
+# hearth_ai is a submodule (see .gitmodules). Ignore rules for its prepared
+# HF JSONL and training checkpoints live in hearth_ai/.gitignore instead —
+# a superproject's rules do not apply inside a submodule's working tree.

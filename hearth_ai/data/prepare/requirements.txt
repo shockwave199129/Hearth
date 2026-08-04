@@ -1,2 +1,0 @@
-# Optional deps for HF → JSONL prepare scripts
-datasets>=2.18.0

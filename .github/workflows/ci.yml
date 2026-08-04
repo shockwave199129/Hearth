@@ -30,7 +30,12 @@ jobs:
     name: Backend (ruff + pytest)
     runs-on: ubuntu-24.04
     steps:
+      # submodules: hearth_ai is one, and the Lint step below runs ruff over
+      # it. checkout leaves submodules empty by default, which would make
+      # that step fail on a missing path rather than on a real lint error.
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: actions/setup-python@v5
         with:
