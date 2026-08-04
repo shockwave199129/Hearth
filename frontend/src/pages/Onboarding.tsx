@@ -4,13 +4,17 @@ import "./Onboarding.css";
 import { useProfile } from "../hooks/useProfile";
 import { friendlyFetchError } from "../lib/errors";
 import { useAlert } from "../lib/alerts";
+import {
+  DEFAULT_VOICE,
+  DEFAULT_VOICE_STYLE,
+  VOICE_OPTIONS,
+  VOICE_STYLE_OPTIONS,
+  type PreferredVoice,
+  type VoiceStyleId,
+} from "../lib/voiceStyles";
 
 const AGE_RANGES = ["18–24", "25–34", "35–44", "45–54", "55+"];
 const STRESSOR_OPTIONS = ["Work", "Family", "Finances", "Health", "Relationships", "Sleep"];
-const VOICES = [
-  { id: "female", label: "Warm & even" },
-  { id: "male", label: "Calm & low" },
-] as const;
 const FORMALITY_OPTIONS = [
   { id: "casual", label: "Casual" },
   { id: "neutral", label: "Neutral" },
@@ -28,7 +32,8 @@ interface OnboardingData {
   ageRange: string | null;
   profession: string;
   stressors: string[];
-  preferredVoice: "female" | "male";
+  preferredVoice: PreferredVoice;
+  voiceStyle: VoiceStyleId;
   communicationFormality: "casual" | "neutral" | "formal";
   responseLength: "short" | "balanced" | "long";
   emergencyContactConsent: boolean;
@@ -52,7 +57,8 @@ export function Onboarding() {
     ageRange: null,
     profession: "",
     stressors: [],
-    preferredVoice: "female",
+    preferredVoice: DEFAULT_VOICE,
+    voiceStyle: DEFAULT_VOICE_STYLE,
     communicationFormality: "casual",
     responseLength: "balanced",
     emergencyContactConsent: false,
@@ -83,6 +89,7 @@ export function Onboarding() {
         profession: data.profession.trim() || null,
         stressors: data.stressors,
         preferred_voice: data.preferredVoice,
+        voice_style: data.voiceStyle,
         companion_name: data.companionName.trim() || "Companion",
         communication_formality: data.communicationFormality,
         response_length: data.responseLength,
@@ -185,8 +192,8 @@ export function Onboarding() {
 
         {step === 3 && (
           <div className="onboarding__step">
-            <h1>One last thing</h1>
-            <p className="onboarding__hint">How should I sound when I talk with you?</p>
+            <h1>How should I write to you?</h1>
+            <p className="onboarding__hint">You can change any of this later in Settings.</p>
             <div className="onboarding__field">
               <span>Formality</span>
               <div className="onboarding__chip-row">
@@ -217,22 +224,50 @@ export function Onboarding() {
                 ))}
               </div>
             </div>
-            <div className="onboarding__voice-row">
-              {VOICES.map((voice) => (
-                <button
-                  key={voice.id}
-                  type="button"
-                  className={`onboarding__voice-card${data.preferredVoice === voice.id ? " onboarding__voice-card--active" : ""}`}
-                  onClick={() => setData((p) => ({ ...p, preferredVoice: voice.id }))}
-                >
-                  {voice.label}
-                </button>
-              ))}
-            </div>
           </div>
         )}
 
         {step === 4 && (
+          <div className="onboarding__step">
+            <h1>And how should I sound?</h1>
+            <p className="onboarding__hint">
+              This only changes the spoken voice — you can switch it any time in Settings.
+            </p>
+            <div className="onboarding__field">
+              <span>Voice</span>
+              <div className="onboarding__voice-row">
+                {VOICE_OPTIONS.map((voice) => (
+                  <button
+                    key={voice.id}
+                    type="button"
+                    className={`onboarding__voice-card${data.preferredVoice === voice.id ? " onboarding__voice-card--active" : ""}`}
+                    onClick={() => setData((p) => ({ ...p, preferredVoice: voice.id }))}
+                  >
+                    {voice.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="onboarding__field">
+              <span>Way of speaking</span>
+              <div className="onboarding__voice-row">
+                {VOICE_STYLE_OPTIONS.map((style) => (
+                  <button
+                    key={style.id}
+                    type="button"
+                    className={`onboarding__voice-card${data.voiceStyle === style.id ? " onboarding__voice-card--active" : ""}`}
+                    onClick={() => setData((p) => ({ ...p, voiceStyle: style.id }))}
+                  >
+                    <strong>{style.label}</strong>
+                    <span className="onboarding__voice-blurb">{style.blurb}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {step === 5 && (
           <div className="onboarding__step">
             <h1>One safety net, if you want it</h1>
             <p className="onboarding__hint">

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     profession TEXT,
     stressors TEXT NOT NULL,        -- JSON-encoded list[str]
     preferred_voice TEXT NOT NULL,
+    voice_style TEXT NOT NULL DEFAULT 'grounded',
     companion_name TEXT NOT NULL,
     communication_formality TEXT NOT NULL DEFAULT 'casual',
     response_length TEXT NOT NULL DEFAULT 'balanced',
@@ -166,6 +167,7 @@ def _ensure_columns(conn, table: str, columns: dict[str, str]) -> None:
 # emergency-contact columns above.
 _PROFILES_TEXT_INPUT_COLUMNS = {
     "speak_replies": "INTEGER NOT NULL DEFAULT 1",
+    "voice_style": "TEXT NOT NULL DEFAULT 'grounded'",
     "communication_formality": "TEXT NOT NULL DEFAULT 'casual'",
     "response_length": "TEXT NOT NULL DEFAULT 'balanced'",
     "emoji_usage": "TEXT NOT NULL DEFAULT 'minimal'",

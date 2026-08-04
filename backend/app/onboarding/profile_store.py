@@ -16,7 +16,7 @@ from app.onboarding.profile_schema import OnboardingRequest, UserProfile
 PROFILE_DB_PATH = DATA_DIR / "profile.db"
 
 _COLUMNS = (
-    "user_id, name, age_range, gender, profession, stressors, preferred_voice, companion_name, "
+    "user_id, name, age_range, gender, profession, stressors, preferred_voice, voice_style, companion_name, "
     "communication_formality, response_length, emoji_usage, speak_replies, emergency_contact_consent, emergency_contact_name, emergency_contact_method, "
     "emergency_contact_value, relationship_general_trust, relationship_vulnerability_trust, "
     "relationship_advice_trust, relationship_consistency_confidence, relationship_boundaries, relationship_life_model, "
@@ -33,6 +33,7 @@ def _row_to_profile(row) -> UserProfile:
         profession,
         stressors_json,
         preferred_voice,
+        voice_style,
         companion_name,
         communication_formality,
         response_length,
@@ -62,6 +63,7 @@ def _row_to_profile(row) -> UserProfile:
         profession=profession,
         stressors=json.loads(stressors_json),
         preferred_voice=preferred_voice,
+        voice_style=voice_style,
         companion_name=companion_name,
         communication_formality=communication_formality,
         response_length=response_length,
@@ -93,7 +95,7 @@ def create_profile(payload: OnboardingRequest) -> UserProfile:
     try:
         conn.execute(
             f"INSERT INTO profiles ({_COLUMNS}) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 profile.user_id,
                 profile.name,
@@ -102,6 +104,7 @@ def create_profile(payload: OnboardingRequest) -> UserProfile:
                 profile.profession,
                 json.dumps(profile.stressors),
                 profile.preferred_voice,
+                profile.voice_style,
                 profile.companion_name,
                 profile.communication_formality,
                 profile.response_length,
@@ -134,6 +137,20 @@ def update_speak_replies(user_id: str, value: bool) -> None:
     conn = get_connection(PROFILE_DB_PATH)
     try:
         conn.execute("UPDATE profiles SET speak_replies = ? WHERE user_id = ?", (int(value), user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_voice_preferences(user_id: str, *, preferred_voice: str, voice_style: str) -> None:
+    """Which voice speaks, and how. Callers validate against
+    tts.voice_styles first — this writes whatever it's given."""
+    conn = get_connection(PROFILE_DB_PATH)
+    try:
+        conn.execute(
+            "UPDATE profiles SET preferred_voice = ?, voice_style = ? WHERE user_id = ?",
+            (preferred_voice, voice_style, user_id),
+        )
         conn.commit()
     finally:
         conn.close()

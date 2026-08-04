@@ -12,12 +12,20 @@ from pathlib import Path
 import numpy as np
 
 from app.hardware.tier_manager import TierConfig
+from app.tts.voice_styles import (
+    DEFAULT_VOICE_STYLE,
+    kokoro_voice_ids,
+    parler_description,
+    resolve_style,
+)
 
 
 class TtsEngine:
     sample_rate: int
 
-    def synthesize(self, text: str, voice: str) -> np.ndarray:
+    def synthesize(
+        self, text: str, voice: str, style: str = DEFAULT_VOICE_STYLE
+    ) -> np.ndarray:
         raise NotImplementedError
 
 
@@ -25,15 +33,10 @@ class ParlerEngine(TtsEngine):
     """Uses parler-tts/parler-tts-tiny-v1. Unlike Chatterbox, Parler has no
     audio-prompt voice cloning and no inline paralinguistic tags — voice is
     steered entirely by a natural-language description passed alongside the
-    text, so _VOICE_DESCRIPTIONS below stands in for what chatterbox_engine's
-    voice_profiles/*.wav files used to do."""
-
-    _VOICE_DESCRIPTIONS = {
-        "male": "A male speaker with a warm, calm voice delivers his words "
-        "at a moderate pace in a quiet room.",
-        "female": "A female speaker with a warm, calm voice delivers her "
-        "words at a moderate pace in a quiet room.",
-    }
+    text, so voice_styles.py's descriptions stand in for what
+    chatterbox_engine's voice_profiles/*.wav files used to do. That's also
+    what makes the user-facing speaking-style presets possible at all: they
+    are just different descriptions, no extra weights."""
 
     def __init__(self, device: str):
         # deferred: heavy torch/transformers import
@@ -93,25 +96,29 @@ class ParlerEngine(TtsEngine):
         else:
             log.info("Parler TTS on cpu (%s)", dtype)
 
-    def synthesize(self, text: str, voice: str) -> np.ndarray:
+    def synthesize(
+        self, text: str, voice: str, style: str = DEFAULT_VOICE_STYLE
+    ) -> np.ndarray:
         import hashlib
         import logging
 
         import torch
 
         log = logging.getLogger("hearth")
-        description = self._VOICE_DESCRIPTIONS.get(
-            voice, self._VOICE_DESCRIPTIONS["female"]
-        )
+        description = parler_description(voice, style)
         input_ids = self._tokenizer(description, return_tensors="pt").input_ids.to(
             self._device
         )
         prompt_input_ids = self._tokenizer(text, return_tensors="pt").input_ids.to(
             self._device
         )
-        # Stable seed from voice+text (sha256, not Python hash()) so live
-        # chat and days-later replay use the same Parler sampling path.
-        seed = int(hashlib.sha256(f"{voice}\0{text}".encode()).hexdigest()[:8], 16)
+        # Stable seed from voice+style+text (sha256, not Python hash()) so
+        # live chat and days-later replay use the same Parler sampling path.
+        # Style is part of the key on purpose: switching preset should
+        # re-synthesize differently, not replay the old delivery.
+        seed = int(
+            hashlib.sha256(f"{voice}\0{style}\0{text}".encode()).hexdigest()[:8], 16
+        )
 
         def _greedy() -> torch.Tensor:
             return self._model.generate(
@@ -177,9 +184,12 @@ class ParlerEngine(TtsEngine):
 class KokoroEngine(TtsEngine):
     """Uses NeuML/kokoro-fp16-onnx via onnxruntime + ttstokenizer, per that
     model card's ONNX Runtime example. Files come from TTS_KOKORO_DIR
-    (see app.setup.models.ensure_kokoro_model)."""
+    (see app.setup.models.ensure_kokoro_model).
 
-    _VOICE_MAP = {"male": "am_adam", "female": "af_sky"}
+    Kokoro takes no description, so the speaking-style presets map onto the
+    two knobs it does have: which voicepack is used, and the `speed` input.
+    Coarser than Parler, but the setting stays meaningful on tiers B/C
+    instead of silently doing nothing."""
 
     def __init__(self):
         import onnxruntime
@@ -194,13 +204,27 @@ class KokoroEngine(TtsEngine):
         self._tokenizer = None  # built lazily below: ttstokenizer import is deferred too
         self.sample_rate = 24000
 
-    def synthesize(self, text: str, voice: str) -> np.ndarray:
+    def _pick_voice_id(self, voice: str, style: str) -> str:
+        """First voicepack of the style's preference order that this kokoro
+        build actually ships — which voicepacks exist varies by repo, so a
+        preset must never hard-depend on one being present."""
+        for candidate in kokoro_voice_ids(voice, style):
+            if candidate in self._voices:
+                return candidate
+        for candidate in kokoro_voice_ids(voice, None):
+            if candidate in self._voices:
+                return candidate
+        return next(iter(self._voices))
+
+    def synthesize(
+        self, text: str, voice: str, style: str = DEFAULT_VOICE_STYLE
+    ) -> np.ndarray:
         if self._tokenizer is None:
             from ttstokenizer import IPATokenizer
 
             self._tokenizer = IPATokenizer()
 
-        voice_id = self._VOICE_MAP.get(voice, self._VOICE_MAP["female"])
+        voice_id = self._pick_voice_id(voice, style)
         tokens = self._tokenizer(text)
         speaker = np.array(self._voices[voice_id], dtype=np.float32)
         outputs = self._session.run(
@@ -208,7 +232,7 @@ class KokoroEngine(TtsEngine):
             {
                 "tokens": [[0, *tokens, 0]],
                 "style": speaker[len(tokens)],
-                "speed": np.ones(1, dtype=np.float32) * 1.0,
+                "speed": np.ones(1, dtype=np.float32) * resolve_style(style).kokoro_speed,
             },
         )
         audio_arr = np.asarray(outputs[0], dtype=np.float32).reshape(-1)

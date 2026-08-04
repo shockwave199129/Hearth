@@ -147,6 +147,13 @@
 
 .onboarding__voice-card {
   flex: 1;
+  /* Style cards carry a label + blurb, so give them a floor rather than
+     letting the three of them shrink to the widest word. */
+  min-width: 8rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  text-align: left;
   border: 1px solid var(--color-border);
   background: var(--color-bg-elevated-2);
   color: var(--color-text-muted);
@@ -155,6 +162,17 @@
   font-size: var(--fs-sm);
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-standard);
+}
+
+.onboarding__voice-blurb {
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+}
+
+.onboarding__voice-card--active .onboarding__voice-blurb {
+  color: inherit;
+  opacity: 0.8;
 }
 
 .onboarding__voice-card--active {

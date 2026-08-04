@@ -8,6 +8,11 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# Do NOT add the "devtools" feature. Without it Tauri omits the inspector
+# from release builds entirely, which is what actually keeps the developer
+# window out of a shipped Hearth — frontend/src/lib/devtools.ts only blocks
+# the keyboard shortcuts, and a keypress handler is not a boundary.
+# `tauri dev` still gets devtools regardless; debug builds always include it.
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

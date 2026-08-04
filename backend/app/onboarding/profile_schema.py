@@ -13,6 +13,10 @@ class UserProfile(BaseModel):
     profession: str | None = None
     stressors: list[str] = Field(default_factory=list)
     preferred_voice: str = "female"    # "male" | "female"
+    # How that voice speaks — see tts/voice_styles.py for the presets and
+    # why they're constrained to Hearth's register. User-owned (Book Vol 2
+    # Ch 7), set at onboarding, changeable in Settings.
+    voice_style: str = "grounded"    # "grounded" | "gentle" | "bright"
     companion_name: str = "Companion"
     communication_formality: str = "casual"    # "casual" | "neutral" | "formal"
     response_length: str = "balanced"    # "short" | "balanced" | "long"
@@ -57,6 +61,7 @@ class OnboardingRequest(BaseModel):
     profession: str | None = None
     stressors: list[str] = Field(default_factory=list)
     preferred_voice: str = "female"
+    voice_style: str = "grounded"
     companion_name: str = "Companion"
     communication_formality: str = "casual"
     response_length: str = "balanced"

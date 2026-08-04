@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { backendFetch, fetchWithTimeout, retryWithBackoff } from "./backendFetch";
 import { friendlyFetchError } from "./errors";
+import type { PreferredVoice, VoiceStyleId } from "./voiceStyles";
 
 export interface Profile {
   user_id: string;
@@ -9,7 +10,8 @@ export interface Profile {
   gender: string | null;
   profession: string | null;
   stressors: string[];
-  preferred_voice: "female" | "male";
+  preferred_voice: PreferredVoice;
+  voice_style: VoiceStyleId;
   companion_name: string;
   communication_formality: "casual" | "neutral" | "formal";
   response_length: "short" | "balanced" | "long";
@@ -48,6 +50,10 @@ export interface ProfileContextValue {
   setCommunicationPreferences: (value: {
     communication_formality: "casual" | "neutral" | "formal";
     response_length: "short" | "balanced" | "long";
+  }) => Promise<void>;
+  setVoicePreferences: (value: {
+    preferred_voice: PreferredVoice;
+    voice_style: VoiceStyleId;
   }) => Promise<void>;
 }
 
@@ -131,9 +137,39 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     [profile],
   );
 
+  const setVoicePreferences = useCallback(
+    async (value: { preferred_voice: PreferredVoice; voice_style: VoiceStyleId }) => {
+      const res = await backendFetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ speak_replies: profile?.speak_replies ?? true, ...value }),
+      });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const updated = (await res.json()) as Profile;
+      setProfile(updated);
+    },
+    [profile],
+  );
+
   const value = useMemo(
-    () => ({ profile, loading, error, submitOnboarding, setSpeakReplies, setCommunicationPreferences }),
-    [profile, loading, error, submitOnboarding, setSpeakReplies, setCommunicationPreferences],
+    () => ({
+      profile,
+      loading,
+      error,
+      submitOnboarding,
+      setSpeakReplies,
+      setCommunicationPreferences,
+      setVoicePreferences,
+    }),
+    [
+      profile,
+      loading,
+      error,
+      submitOnboarding,
+      setSpeakReplies,
+      setCommunicationPreferences,
+      setVoicePreferences,
+    ],
   );
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
