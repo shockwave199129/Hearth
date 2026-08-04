@@ -31,8 +31,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       # submodules: hearth_ai is one, and the Lint step below runs ruff over
-      # it. checkout leaves submodules empty by default, which would make
-      # that step fail on a missing path rather than on a real lint error.
+      # it. checkout leaves submodules empty by default, and ruff over an
+      # empty directory exits 0 with "All checks passed!" — so without this
+      # the lint step would go green while silently covering none of
+      # hearth_ai. It fails open, not closed, which is why it has to be
+      # pinned here rather than left to be noticed when it breaks.
       - uses: actions/checkout@v4
         with:
           submodules: recursive
