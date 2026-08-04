@@ -210,6 +210,31 @@ for _pkg in _COLLECT_ALL_PACKAGES:
         cleaned_binaries.append((dest_name, source, "BINARY"))
     a.binaries += cleaned_binaries
 
+# moonshine-voice's manylinux wheel vendors its onnxruntime shared lib in a
+# sibling auditwheel dir (moonshine_voice.libs/), not inside the package.
+# collect_all/collect_dynamic_libs only scan the package tree, so they miss
+# it. libmoonshine.so's RPATH is $ORIGIN:$ORIGIN/../moonshine_voice.libs —
+# without this folder the frozen Linux app fails at launch with
+# "Failed to load dynlib/dll '.../libmoonshine.so'" even though that .so
+# itself was bundled (its NEEDED dep libonnxruntime-*.so.1 is missing).
+if sys.platform.startswith("linux"):
+    import moonshine_voice as _moonshine_voice
+
+    _moonshine_libs = (
+        Path(_moonshine_voice.__file__).resolve().parent.parent / "moonshine_voice.libs"
+    )
+    if _moonshine_libs.is_dir():
+        for _lib in sorted(_moonshine_libs.iterdir()):
+            if _lib.is_file() and ".so" in _lib.name:
+                a.binaries += [(f"moonshine_voice.libs/{_lib.name}", str(_lib), "BINARY")]
+    else:
+        raise SystemExit(
+            f"moonshine_voice.libs not found at {_moonshine_libs} — "
+            "Linux freeze needs this auditwheel dir next to moonshine_voice "
+            "(libonnxruntime-*.so.1). Reinstall moonshine-voice from the "
+            "manylinux wheel."
+        )
+
 # Build the PYZ archive (pure Python modules) and the executable wrapper.
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
