@@ -12,7 +12,7 @@ rather than being faked into a pass/fail this module can't actually verify."""
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable
 
 _ADVICE_MARKERS = ("you could", "try", "consider", "you might")

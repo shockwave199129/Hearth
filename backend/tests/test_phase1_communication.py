@@ -137,7 +137,8 @@ def test_invariant_10_explicit_preferences_hold_across_a_whole_session():
         ("I've been struggling with something", "listening"),
         ("thanks, talk soon", "closing"),
     ]
-    style_lines = set()
+    # The per-turn assertions below are what prove the invariant: the same
+    # three explicit-preference lines appear in every stage's prompt.
     for transcript, stage in transcripts_and_stages:
         prompt, _ = builder.build(profile, MindState(stage=stage), transcript)
         assert "Never use emoji." in prompt

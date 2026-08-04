@@ -48,6 +48,19 @@ CREATE TABLE IF NOT EXISTS consolidation_log (
     merged_from TEXT NOT NULL,        -- JSON list of ids
     occurred_at TEXT NOT NULL
 );
+-- Every memory_index access today is by primary key (id), so these buy
+-- nothing yet. They exist because the columns they cover are the table's
+-- whole reason to be non-vector storage: the moment anything sweeps by
+-- owner + kind + status (decay, consolidation, per-user purge) or orders
+-- by recency, an unindexed scan is the shape of that query — and it
+-- degrades gradually over years of accumulated memories, so it would get
+-- misread as the LLM being slow rather than as a missing index. Cheap to
+-- add now; expensive to notice later. Partial-prefix use is fine: SQLite
+-- can use the composite for (user_id) and (user_id, kind) lookups too.
+CREATE INDEX IF NOT EXISTS idx_memory_index_user_kind_status
+    ON memory_index(user_id, kind, status);
+CREATE INDEX IF NOT EXISTS idx_memory_index_user_reinforced
+    ON memory_index(user_id, last_reinforced DESC);
 """
 
 

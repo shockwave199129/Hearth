@@ -1,0 +1,92 @@
+name: CI
+
+# The companion to build.yml, which deliberately only fires on `push: tags:
+# ["v*"]` because building five native installers is expensive and only
+# meaningful at release time. That left a real gap: nothing mechanically
+# verified a change before it shipped, so the test suite could rot silently
+# and a tag could go out on unverified code. This workflow is the cheap,
+# always-on half — it runs on every PR and every push to a long-lived
+# branch, and it must stay fast enough that nobody is tempted to skip it.
+#
+# Make `backend` and `frontend` required status checks on the default
+# branch once this has run green a few times; a gate nobody has to pass is
+# just a slower way of not testing.
+on:
+  pull_request:
+  push:
+    branches: [main, thf-implementation]
+  workflow_dispatch: {}
+
+# Two people pushing to the same PR shouldn't queue up redundant runs.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (ruff + pytest)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-*.txt
+
+      # requirements-dev.txt pulls in requirements-cpu.txt (which pulls in
+      # requirements-common.txt) — the CPU tier is the only one a GPU-less
+      # runner can honestly install, and the suite imports app.* widely
+      # enough that the runtime deps are genuinely required, not optional.
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r backend/requirements-dev.txt
+
+      # Gates on real defects only — undefined names, unused imports, dead
+      # locals, syntax errors. Formatting is the formatter's job and is not
+      # wired up yet on purpose; see ruff.toml's header for why.
+      - name: Lint
+        run: ruff check backend scripts hearth_ai
+
+      # -m "not perf": the latency-budget tests measure a shared, noisy CI
+      # VM rather than the code. See backend/pytest.ini's marker docs and
+      # tests/test_nlp_golden.py.
+      #
+      # Note that models/nlp/**/*.onnx is gitignored, so the NLP golden
+      # suite skips here rather than running — that is a known coverage
+      # hole in this gate, not something it silently covers.
+      - name: Test
+        working-directory: backend
+        run: pytest -m "not perf"
+
+  frontend:
+    name: Frontend (tsc)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      # `pnpm build` already runs `tsc --noEmit && vite build`; this calls
+      # the typecheck script directly so a type error reports as a type
+      # error instead of as a failed bundle. There is no ESLint config and
+      # no test runner in this package yet — when Vitest lands (see the
+      # review's medium-term items), add it as another step here.
+      - name: Typecheck
+        working-directory: frontend
+        run: pnpm run typecheck

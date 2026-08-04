@@ -14,11 +14,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 import yaml
 
 from app.onboarding.profile_schema import UserProfile
 from app.skills.loader import SKILLS_ROOT, Skill
+
+if TYPE_CHECKING:
+    # engine.py imports this module, so a runtime import here would be
+    # circular — hence the string annotation on rank_candidates(). Guarding
+    # it under TYPE_CHECKING keeps that property while letting type
+    # checkers and linters actually resolve the name.
+    from app.intervention.engine import InterventionContext
 
 COMPATIBILITY_PATH = SKILLS_ROOT / "_compatibility.yaml"
 

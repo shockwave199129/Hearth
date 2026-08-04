@@ -79,20 +79,35 @@ class LlamaCppProcess:
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             if self._proc.poll() is not None:
-                # Give the drain thread a moment to finish reading.
-                if self._drain_thread is not None:
-                    self._drain_thread.join(timeout=1.0)
-                output = "".join(self._stdout_tail)
                 raise LlmServerError(
-                    f"llama-server exited early with code {self._proc.returncode}\n{output}"
+                    f"llama-server exited early with code {self._proc.returncode}\n"
+                    f"{self._exited_output()}"
                 )
             try:
-                if requests.get(f"{self.base_url}/health", timeout=1).ok:
-                    return
+                healthy = requests.get(f"{self.base_url}/health", timeout=1).ok
             except requests.RequestException:
-                pass
+                healthy = False
+            if healthy:
+                # A healthy port does NOT prove *our* process owns it: when an
+                # earlier llama-server is still bound here, ours dies on the
+                # failed bind while its /health answers for it, and we'd hand
+                # back a handle whose process is already gone. Re-check our own
+                # process before declaring readiness.
+                if self._proc.poll() is None:
+                    return
+                raise LlmServerError(
+                    f"port {self._port} is already served by another process — "
+                    f"our llama-server exited with code {self._proc.returncode}\n"
+                    f"{self._exited_output()}"
+                )
             time.sleep(0.5)
         raise LlmServerError(f"llama-server did not become ready within {timeout_s}s")
+
+    def _exited_output(self) -> str:
+        """Captured stdout of a process that has already exited."""
+        if self._drain_thread is not None:
+            self._drain_thread.join(timeout=1.0)
+        return "".join(self._stdout_tail)
 
     def is_running(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
@@ -125,7 +140,12 @@ class LlmServer(LlamaCppProcess):
         """Plain-text completion — used for the short-term summarizer, which
         doesn't need tool calling."""
         if not self.is_running():
-            raise LlmServerError("llama-server is not running — call start() first")
+            if self._proc is None:
+                raise LlmServerError("llama-server is not running — call start() first")
+            raise LlmServerError(
+                f"llama-server exited with code {self._proc.returncode}\n"
+                f"{self._exited_output()}"
+            )
         resp = requests.post(
             f"{self.base_url}/completion",
             json={"prompt": prompt, "n_predict": max_tokens, "temperature": temperature},

@@ -2,13 +2,13 @@
 into one setup flow — see main.py's /api/setup/* endpoints for how the
 frontend drives this, and the project setup plan for the overall design.
 """
+import os
 from pathlib import Path
 
 from app.config import (
     BACKEND_DIR,
     EMBEDDING_MODEL_FILE,
     EMBEDDING_MODELS_DIR,
-    LLM_MODELS_DIR,
     TTS_KOKORO_DIR,
     TTS_PARLER_DIR,
 )
@@ -17,7 +17,25 @@ from app.hardware.tier_manager import TierConfig, pick_tier, resolve_paths
 from app.setup import hardware_variant, models
 from app.setup.installer import InstallProgress, SetupError, install_packages
 from app.setup.state import clear_setup_complete, is_setup_complete
-from app.setup.state import mark_setup_complete as mark_complete
+
+# Deliberate re-export, NOT dead weight: main.py reaches this as
+# `orchestrator.mark_complete()` (twice — after a successful first-run
+# setup, and after a successful late Pipeline build), so this module is the
+# whole setup facade the API layer talks to. Attribute access through a
+# module namespace is invisible to Pyflakes, which reports the import as
+# unused; `ruff check --fix` therefore deletes it and turns every
+# successful setup into an AttributeError at the very last step, after
+# packages and models are already installed. Both the noqa and __all__
+# below exist to stop that from happening again — do not "clean up" either.
+from app.setup.state import mark_setup_complete as mark_complete  # noqa: F401
+
+__all__ = [
+    "clear_setup_complete",
+    "detect_status",
+    "is_setup_complete",
+    "mark_complete",
+    "run_setup",
+]
 
 # Bundled via hearth-backend.spec's datas (dest ".") specifically so this
 # resolves correctly in both dev and frozen modes without its own
@@ -51,6 +69,23 @@ def _packages_engine_importable(tier: TierConfig) -> bool:
     except ImportError:
         return False
     return True
+
+
+def _skip_package_install(tier: TierConfig) -> bool:
+    """Whether the pip-install phase has nothing left to do.
+
+    installer.py installs into BACKEND_DEPS_DIR using a *bundled* standalone
+    Python that only ships as a Tauri resource of the packaged desktop app.
+    Environments that install the requirements files up front instead —
+    Docker (see docker/install_python_deps.sh) and venv dev checkouts — have
+    no such archive, so attempting the install fails on a machine that
+    already has everything it needs. `HEARTH_SKIP_PACKAGE_INSTALL=1` forces
+    the skip when the import probe can't see them (e.g. a GPU image started
+    without --gpus, which detects a kokoro tier).
+    """
+    if os.environ.get("HEARTH_SKIP_PACKAGE_INSTALL", "").strip() == "1":
+        return True
+    return _packages_engine_importable(tier)
 
 
 def _models_present(tier: TierConfig) -> bool:
@@ -115,7 +150,11 @@ def run_setup(progress: InstallProgress) -> None:
         )
 
         progress.set_step("installing_packages")
-        if tier.tts_engine in ("parler_gpu", "parler_cpu"):
+        if _skip_package_install(tier):
+            progress.append_log(
+                f"{tier.tts_engine} packages already present — skipping install"
+            )
+        elif tier.tts_engine in ("parler_gpu", "parler_cpu"):
             # torch (+torchaudio, which must match torch's own ABI — see
             # installer.py's docstring and this session's earlier
             # reproduction of the ABI-mismatch failure mode) come from the

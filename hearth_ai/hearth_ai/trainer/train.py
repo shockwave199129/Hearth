@@ -400,8 +400,8 @@ class MultiTaskTrainer:
             )
             for t, ds in self.train_datasets.items()
         }
-        steps_per_epoch = steps_per_epoch or max(len(l) for l in loaders.values())
-        iters = {t: self._cycle(l) for t, l in loaders.items()}
+        steps_per_epoch = steps_per_epoch or max(len(dl) for dl in loaders.values())
+        iters = {t: self._cycle(dl) for t, dl in loaders.items()}
 
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
         scheduler = None

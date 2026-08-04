@@ -1,0 +1,56 @@
+# Local Hearth stack. GPU is opt-in via docker-compose.gpu.yml — prefer
+# `./scripts/docker-up.sh`, which attaches that override when an NVIDIA GPU
+# (and the NVIDIA Container Toolkit) is available.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+      target: backend-cpu
+      args:
+        LLAMA_CPP_TAG: b10016
+    image: hearth-backend:cpu
+    ports:
+      - "48173:48173"
+    environment:
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "48173"
+      LLAMA_SERVER_BIN: /opt/llama-cpp/llama-server
+      PYTHON_KEYRING_BACKEND: keyrings.alt.file.PlaintextKeyring
+      # Set to 1 to skip scripts/setup.py on boot (models already on the volume).
+      HEARTH_SKIP_MODEL_SETUP: "${HEARTH_SKIP_MODEL_SETUP:-0}"
+      # Deps are baked into the image — /api/setup/start only downloads models.
+      HEARTH_SKIP_PACKAGE_INSTALL: "1"
+    volumes:
+      - hearth-data:/app/backend/data
+      - hearth-models:/app/backend/models
+      - hearth-keyring:/root/.local/share/python_keyring
+      # Optional: reuse a host checkout's models directory instead of the named volume.
+      # - ./backend/models:/app/backend/models
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:48173/api/setup/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      # First boot may download GGUFs inside the entrypoint before uvicorn starts.
+      start_period: 45m
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    image: hearth-frontend:dev
+    ports:
+      - "48176:48176"
+    environment:
+      VITE_BACKEND_PROXY: http://backend:48173
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  hearth-data:
+  hearth-models:
+  hearth-keyring:
