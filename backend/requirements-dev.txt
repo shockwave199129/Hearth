@@ -1,0 +1,16 @@
+# Test/lint tooling. Deliberately NOT pulled into requirements-common.txt:
+# that file is what PyInstaller freezes into the shipped installer, and
+# nothing here should reach an end user's machine.
+#
+# Installed on top of requirements-cpu.txt in CI — the CPU tier is the one
+# GitHub runners can actually satisfy (no GPU, and requirements-gpu.txt's
+# torch/parler-tts stack is both huge and pointless without one). The test
+# suite imports app.* broadly, so the app's own runtime deps are required,
+# not just these.
+-r requirements-cpu.txt
+
+pytest==9.*
+# Ruff pre-1.0 adds rules in minor releases, so an unpinned range would
+# turn an upstream release into a surprise red build on an unrelated PR.
+# Bump deliberately.
+ruff==0.16.*

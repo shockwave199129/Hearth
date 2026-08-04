@@ -1,0 +1,51 @@
+# Lint/format config for the Python backend and build scripts.
+#
+# This file exists mainly to end an ambiguity: the codebase was written to a
+# ~100-column convention that nothing enforced, so contributors could not
+# tell whether it was a rule or a habit, and review time went to style
+# instead of substance. It is a rule now.
+#
+# The enforcement split is deliberate. `line-length` drives the FORMATTER
+# (`ruff format`), not the linter — E501 is not in `select`, so a long line
+# is fixed by running the formatter rather than by failing someone's build
+# over one overflowing character. The linter gates on things that are
+# actually wrong: undefined names, unused imports, dead locals, syntax-level
+# errors. That keeps a red CI check meaningful.
+#
+# Deliberately NOT enabled yet, and both for the same reason — each would
+# rewrite hundreds of lines across dozens of files, burying the substantive
+# changes they shipped alongside and making `git blame` useless on them:
+#   * `ruff format --check` in CI (~400 lines reflowed)
+#   * the `I` (isort) rules (41 files re-sorted)
+# Land each as its own mechanical, review-at-a-glance commit, then add the
+# rule here and the check in CI. Nothing about the config below has to
+# change first.
+
+line-length = 100
+target-version = "py312"
+
+exclude = [
+    "hearth_ai/data",
+    "models",
+    "backend/build",
+    "backend/dist",
+    "**/__pycache__",
+]
+
+[lint]
+# Ruff's default set: pycodestyle errors + Pyflakes. E501 (line-too-long)
+# is intentionally absent — see the header.
+select = ["E4", "E7", "E9", "F"]
+
+[lint.per-file-ignores]
+# Package __init__.py files are re-export surfaces: the "unused" imports
+# ARE the public API. Flagging them would only invite someone to delete
+# them and break every downstream `from app.cognitive import X`.
+"**/__init__.py" = ["F401"]
+# Tests import fixtures and symbols for their side effects and for
+# import-smoke coverage ("does this module still load at all"), which reads
+# as unused to a linter.
+"backend/tests/**" = ["F401"]
+
+[lint.isort]
+known-first-party = ["app", "hearth_ai"]

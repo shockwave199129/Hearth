@@ -1,0 +1,19 @@
+# GPU override — merged by scripts/docker-up.sh when nvidia-smi works and the
+# NVIDIA Container Toolkit can expose GPUs to Docker.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+      target: backend-gpu
+      args:
+        LLAMA_CPP_TAG: b10016
+        TORCH_CUDA_INDEX: cu126
+    image: hearth-backend:gpu
+    gpus: all
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility

@@ -752,7 +752,14 @@ def start_setup() -> dict:
         _setup_progress.set_step("starting_engines")
         _setup_progress.append_log("Starting speech and language engines…")
         try:
-            _pipeline = Pipeline()
+            # Re-running setup against an already-running app (a Retry, or a
+            # manual POST from /docs) must not build a second Pipeline: its
+            # llama-server would fail to bind the port the live one holds,
+            # leaving the new Pipeline wired to a dead process.
+            if _pipeline is None:
+                _pipeline = Pipeline()
+            else:
+                _setup_progress.append_log("Engines already running — reusing them.")
         except Exception as exc:
             # Packages/models installed fine, but constructing the actual
             # pipeline still failed (e.g. llama-server missing/broken) —

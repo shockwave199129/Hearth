@@ -1,0 +1,156 @@
+# Hearth backend image.
+#
+# Targets:
+#   backend-cpu  — default, no NVIDIA toolkit required
+#   backend-gpu  — CUDA torch + CUDA-built llama-server (needs nvidia-container-toolkit)
+#
+#   docker build -f docker/Dockerfile.backend --target backend-cpu -t hearth-backend .
+#   docker build -f docker/Dockerfile.backend --target backend-gpu -t hearth-backend:gpu .
+
+ARG LLAMA_CPP_TAG=b10016
+ARG TORCH_CUDA_INDEX=cu126
+
+# ---------------------------------------------------------------------------
+# Official CPU llama-server prebuild (same pin as scripts/fetch_llama_cpp.py)
+# ---------------------------------------------------------------------------
+FROM python:3.12-slim-bookworm AS llama-cpu-fetch
+ARG LLAMA_CPP_TAG
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /out
+RUN curl -fsSL \
+      "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_CPP_TAG}/llama-${LLAMA_CPP_TAG}-bin-ubuntu-x64.tar.gz" \
+      -o /tmp/llama.tar.gz \
+    && mkdir -p /tmp/llama \
+    && tar -xzf /tmp/llama.tar.gz -C /tmp/llama \
+    && SRC="$(find /tmp/llama -type f -name llama-server | head -n1 | xargs dirname)" \
+    && cp -a "${SRC}/." /out/ \
+    && chmod +x /out/llama-server
+
+# ---------------------------------------------------------------------------
+# CUDA llama-server (GPU target only)
+# ---------------------------------------------------------------------------
+FROM nvidia/cuda:12.6.3-devel-ubuntu24.04 AS llama-cuda-build
+ARG LLAMA_CPP_TAG
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential cmake git curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git clone --depth 1 --branch "${LLAMA_CPP_TAG}" https://github.com/ggml-org/llama.cpp.git .
+RUN cmake -B build -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release \
+        -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF \
+    && cmake --build build --target llama-server -j"$(nproc)" \
+    && mkdir -p /out \
+    && cp build/bin/llama-server /out/ \
+    && find build -name 'libggml*.so*' -exec cp -a {} /out/ \; \
+    && find build -name 'libllama*.so*' -exec cp -a {} /out/ \; \
+    && (find build -name 'libmtmd*.so*' -exec cp -a {} /out/ \; || true)
+
+# ---------------------------------------------------------------------------
+# Shared app layer helpers (copied into both finals)
+# ---------------------------------------------------------------------------
+FROM python:3.12-slim-bookworm AS app-src
+WORKDIR /src
+COPY backend/ /src/backend/
+COPY scripts/ /src/scripts/
+COPY models/ /src/models/
+COPY docker/entrypoint.sh /src/docker/entrypoint.sh
+COPY docker/install_python_deps.sh /src/docker/install_python_deps.sh
+
+# ---------------------------------------------------------------------------
+# CPU runtime
+# ---------------------------------------------------------------------------
+FROM python:3.12-slim-bookworm AS backend-cpu
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        curl ca-certificates git \
+        libgomp1 libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    APP_HOST=0.0.0.0 \
+    APP_PORT=48173 \
+    LLAMA_SERVER_BIN=/opt/llama-cpp/llama-server \
+    PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring \
+    HEARTH_DEVICE=cpu \
+    HEARTH_SKIP_PACKAGE_INSTALL=1 \
+    LD_LIBRARY_PATH=/opt/llama-cpp \
+    PATH=/opt/venv/bin:$PATH \
+    VIRTUAL_ENV=/opt/venv
+
+COPY --from=llama-cpu-fetch /out/ /opt/llama-cpp/
+COPY --from=app-src /src/backend/requirements-common.txt \
+                    /src/backend/requirements-cpu.txt \
+                    /src/backend/requirements-gpu.txt \
+                    /app/backend/
+COPY --from=app-src /src/docker/install_python_deps.sh /usr/local/bin/install_python_deps.sh
+RUN chmod +x /usr/local/bin/install_python_deps.sh \
+    && HEARTH_DEVICE=cpu /usr/local/bin/install_python_deps.sh
+
+COPY --from=app-src /src/backend/ /app/backend/
+COPY --from=app-src /src/scripts/ /app/scripts/
+COPY --from=app-src /src/models/ /app/models/
+COPY --from=app-src /src/docker/entrypoint.sh /usr/local/bin/hearth-entrypoint.sh
+RUN chmod +x /usr/local/bin/hearth-entrypoint.sh \
+    && mkdir -p /app/backend/data /app/backend/models
+
+WORKDIR /app/backend
+EXPOSE 48173
+VOLUME ["/app/backend/data", "/app/backend/models", "/root/.local/share/python_keyring"]
+ENTRYPOINT ["hearth-entrypoint.sh"]
+CMD ["python", "-m", "app.main"]
+
+# ---------------------------------------------------------------------------
+# GPU runtime
+# ---------------------------------------------------------------------------
+FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04 AS backend-gpu
+ARG TORCH_CUDA_INDEX
+# Ubuntu 24.04 ships Python 3.12 — matches the project's 3.11+ requirement.
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        python3 python3-venv python3-pip python3-dev \
+        curl ca-certificates git \
+        libgomp1 libsndfile1 \
+    && ln -sf /usr/bin/python3 /usr/local/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    APP_HOST=0.0.0.0 \
+    APP_PORT=48173 \
+    LLAMA_SERVER_BIN=/opt/llama-cpp/llama-server \
+    PYTHON_KEYRING_BACKEND=keyrings.alt.file.PlaintextKeyring \
+    HEARTH_DEVICE=gpu \
+    HEARTH_SKIP_PACKAGE_INSTALL=1 \
+    LD_LIBRARY_PATH=/opt/llama-cpp \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    PATH=/opt/venv/bin:$PATH \
+    VIRTUAL_ENV=/opt/venv
+
+COPY --from=llama-cuda-build /out/ /opt/llama-cpp/
+COPY --from=app-src /src/backend/requirements-common.txt \
+                    /src/backend/requirements-cpu.txt \
+                    /src/backend/requirements-gpu.txt \
+                    /app/backend/
+COPY --from=app-src /src/docker/install_python_deps.sh /usr/local/bin/install_python_deps.sh
+RUN chmod +x /usr/local/bin/install_python_deps.sh \
+    && HEARTH_DEVICE=gpu TORCH_CUDA_INDEX="${TORCH_CUDA_INDEX}" \
+       /usr/local/bin/install_python_deps.sh
+
+COPY --from=app-src /src/backend/ /app/backend/
+COPY --from=app-src /src/scripts/ /app/scripts/
+COPY --from=app-src /src/models/ /app/models/
+COPY --from=app-src /src/docker/entrypoint.sh /usr/local/bin/hearth-entrypoint.sh
+RUN chmod +x /usr/local/bin/hearth-entrypoint.sh \
+    && mkdir -p /app/backend/data /app/backend/models
+
+WORKDIR /app/backend
+EXPOSE 48173
+VOLUME ["/app/backend/data", "/app/backend/models", "/root/.local/share/python_keyring"]
+ENTRYPOINT ["hearth-entrypoint.sh"]
+CMD ["python", "-m", "app.main"]

@@ -7,6 +7,7 @@ app.setup.models during first-run setup), not from the Hugging Face hub
 cache's blobs/snapshots layout — see ensure_parler_model / ensure_kokoro_model.
 """
 import json
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -23,7 +24,27 @@ from app.tts.voice_styles import (
 class TtsEngine:
     sample_rate: int
 
+    def __init__(self) -> None:
+        # One engine instance is shared by every request path, and two of
+        # them genuinely overlap: the chat WebSocket runs respond() via
+        # asyncio.to_thread, while /api/chat/history/{id}/replay is a sync
+        # def that FastAPI runs on its own threadpool worker. A user hitting
+        # replay mid-reply therefore enters model.generate() from two
+        # threads on one torch module / one CUDA context — not thread-safe,
+        # and it fails as corrupted audio or a device-side assert rather
+        # than a clean error. Serializing costs nothing real: a single GPU
+        # was never going to run both passes in parallel anyway.
+        self._synthesis_lock = threading.Lock()
+
     def synthesize(
+        self, text: str, voice: str, style: str = DEFAULT_VOICE_STYLE
+    ) -> np.ndarray:
+        """Locked entry point — subclasses implement `_synthesize`, so a new
+        engine cannot accidentally opt out of the serialization above."""
+        with self._synthesis_lock:
+            return self._synthesize(text, voice, style)
+
+    def _synthesize(
         self, text: str, voice: str, style: str = DEFAULT_VOICE_STYLE
     ) -> np.ndarray:
         raise NotImplementedError
@@ -39,6 +60,7 @@ class ParlerEngine(TtsEngine):
     are just different descriptions, no extra weights."""
 
     def __init__(self, device: str):
+        super().__init__()
         # deferred: heavy torch/transformers import
         import logging
 
@@ -96,7 +118,7 @@ class ParlerEngine(TtsEngine):
         else:
             log.info("Parler TTS on cpu (%s)", dtype)
 
-    def synthesize(
+    def _synthesize(
         self, text: str, voice: str, style: str = DEFAULT_VOICE_STYLE
     ) -> np.ndarray:
         import hashlib
@@ -192,6 +214,7 @@ class KokoroEngine(TtsEngine):
     instead of silently doing nothing."""
 
     def __init__(self):
+        super().__init__()
         import onnxruntime
 
         from app.setup.models import ensure_kokoro_model
@@ -216,7 +239,7 @@ class KokoroEngine(TtsEngine):
                 return candidate
         return next(iter(self._voices))
 
-    def synthesize(
+    def _synthesize(
         self, text: str, voice: str, style: str = DEFAULT_VOICE_STYLE
     ) -> np.ndarray:
         if self._tokenizer is None:

@@ -231,8 +231,10 @@ EMBEDDING_SERVER_PORT = 48175
 # on-disk folder, no server process of its own. See db/chroma_client.py.
 VECTOR_STORE_DIR = DATA_DIR / "vector_store"
 
-APP_HOST = "127.0.0.1"
-APP_PORT = 48173
+# Loopback by default (desktop / local venv). Docker sets APP_HOST=0.0.0.0
+# so the published port is reachable from the host / sibling containers.
+APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
+APP_PORT = int(os.environ.get("APP_PORT", "48173"))
 
 # Cached hardware/tier detection result, re-checked on every launch (cheap enough,
 # see project-plan.md §2) rather than trusted across app versions/machine changes.

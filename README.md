@@ -37,7 +37,35 @@ with a smaller model and a lighter TTS engine.
 
 ## Getting started
 
-### 1. Prerequisites
+### Docker (recommended for a quick local stack)
+
+Requires Docker Compose v2. With an NVIDIA GPU, also install the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+so containers can see the device.
+
+```bash
+./scripts/docker-up.sh --build
+# force CPU:  ./scripts/docker-up.sh --cpu --build
+# force GPU:  ./scripts/docker-up.sh --gpu --build
+```
+
+The helper attaches `docker-compose.gpu.yml` automatically when `nvidia-smi`
+works **and** `docker run --gpus all … nvidia-smi` succeeds; otherwise it
+uses the CPU image.
+
+- UI: http://localhost:48176
+- API: http://localhost:48173
+
+First boot downloads the GGUF/TTS weights for the detected hardware tier
+into a Docker volume (can take a while). Data and models persist across
+restarts. Mic/speaker CLI mode is not wired through Docker — use the web
+UI (browser captures audio).
+
+To reuse models already on the host, bind-mount them in
+`docker-compose.yml` (uncomment the `./backend/models` volume) and set
+`HEARTH_SKIP_MODEL_SETUP=1` when the GGUFs are already present.
+
+### 1. Prerequisites (non-Docker)
 
 - Python 3.11+ and Node.js 20+
 - [llama.cpp](https://github.com/ggerganov/llama.cpp)'s `llama-server`
