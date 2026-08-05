@@ -236,8 +236,19 @@ VECTOR_STORE_DIR = DATA_DIR / "vector_store"
 APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.environ.get("APP_PORT", "48173"))
 
+# Shared secret for the local API, generated fresh per launch by the Tauri
+# shell and handed to both this process (here) and the webview
+# (desktop/src-tauri/src/main.rs). Loopback binding keeps the network out;
+# this keeps *other local processes* out, which encryption at rest does not
+# — a running Hearth otherwise serves the whole journal to anything on the
+# box. Empty means unauthenticated, which is what a bare `python -m
+# app.main` (dev, --cli, Docker) gets, so nothing outside the packaged app
+# needs to know about the token.
+API_TOKEN = os.environ.get("HEARTH_API_TOKEN", "").strip()
+API_TOKEN_HEADER = "x-hearth-token"
+
 # Cached hardware/tier detection result, re-checked on every launch (cheap enough,
-# see project-plan.md §2) rather than trusted across app versions/machine changes.
+# see docs/project-plan.md §2) rather than trusted across app versions/machine changes.
 TIER_CACHE_FILE = DATA_DIR / "tier_cache.json"
 
 SAMPLE_RATE = 16000  # shared by mic capture, Moonshine STT input, and playback
@@ -248,7 +259,7 @@ lists, headers, markdown, or emoji, just plain talk. Always validate their feeli
 suggestion if it fits naturally, don't force one onto every reply."""
 
 # Templated fresh each turn with the current date and check-in status — see
-# project-plan.md §8. Deliberately inlined as scalar state rather than gated
+# docs/project-plan.md §8. Deliberately inlined as scalar state rather than gated
 # behind a tool, unlike memory/skills, since it's a single fact not content.
 CHECKIN_PROMPT_TEMPLATE = """
 Today's date: {date}. {checkin_status} If it's been a day or more, or you
@@ -269,11 +280,11 @@ CHECKIN_QUESTION_PHRASES = (
 )
 
 # Rolling short-term window: summarize the oldest chunk once the session
-# exceeds this many raw turns. See project-plan.md §4 (short-term memory).
+# exceeds this many raw turns. See docs/project-plan.md §4 (short-term memory).
 SHORT_TERM_WINDOW = 20
 SHORT_TERM_SUMMARIZE_CHUNK = 10
 
-# Safety/crisis layer — see project-plan.md §9 and app/safety/. Spoken
+# Safety/crisis layer — see docs/project-plan.md §9 and app/safety/. Spoken
 # verbatim on a crisis-detector trigger, in place of any LLM-generated
 # reply. NEEDS REVIEW by a licensed mental health professional before
 # production use, same caveat as the skills library.

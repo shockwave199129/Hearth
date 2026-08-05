@@ -16,6 +16,9 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# v4 only, for the per-launch local API token (see main.rs's api_token) —
+# a CSPRNG-backed 122-bit value, not an identifier.
+uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

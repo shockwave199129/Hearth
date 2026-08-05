@@ -8,13 +8,15 @@ import asyncio
 import io
 import json
 import logging
+import secrets
 import threading
 import wave
 from datetime import datetime, timezone
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.cognitive import CognitiveScheduler, PromptBuilder, ResponseComposer, StateManager
@@ -24,6 +26,8 @@ from app.intervention.observation import mark_skill_used, resolve_pending_observ
 from app.workers import NlpWorkerRunner
 from app.checkin.state import delete_checkin, get_last_checkin, set_last_checkin
 from app.config import (
+    API_TOKEN,
+    API_TOKEN_HEADER,
     APP_HOST,
     APP_PORT,
     CHECKIN_PROMPT_TEMPLATE,
@@ -73,7 +77,7 @@ from app.tts.voice_styles import VOICE_STYLE_IDS, VOICES
 logger = logging.getLogger("hearth")
 
 # Appended to the system prompt for exactly one regeneration attempt when
-# eval/self_check.py flags a reply — see project-plan.md §7.
+# eval/self_check.py flags a reply — see docs/project-plan.md §7.
 _SELF_CHECK_NUDGE = "\n\nKeep it to 2-3 short spoken sentences, no lists, no clinical or diagnostic language."
 
 
@@ -116,6 +120,29 @@ def _pcm_to_wav_bytes(audio: np.ndarray, sample_rate: int) -> bytes:
 
 
 app = FastAPI(title="Hearth")
+
+
+def _token_matches(supplied: str | None) -> bool:
+    # Compared as bytes: secrets.compare_digest raises TypeError on a str
+    # containing non-ASCII, and header values are attacker-controlled, so
+    # the str form turns a junk header into a 500 instead of a 401.
+    if supplied is None:
+        return False
+    return secrets.compare_digest(supplied.encode("utf-8"), API_TOKEN.encode("utf-8"))
+
+
+# Registered before CORSMiddleware so CORS ends up the outer layer: a
+# rejected request still needs the CORS headers, or the webview reports an
+# opaque network failure instead of the 401. Preflight carries no custom
+# headers by definition, so OPTIONS is checked by the CORS layer alone.
+@app.middleware("http")
+async def _require_api_token(request: Request, call_next):
+    if not API_TOKEN or request.method == "OPTIONS":
+        return await call_next(request)
+    if not _token_matches(request.headers.get(API_TOKEN_HEADER)):
+        return JSONResponse({"detail": "missing or invalid local API token"}, status_code=401)
+    return await call_next(request)
+
 
 # The UI is never served from this process in the packaged app — Tauri loads
 # frontend/dist from its own origin (https://tauri.localhost / tauri://localhost)
@@ -216,7 +243,7 @@ class Pipeline:
     def respond_to_text(self, text: str, memory: ShortTermMemory) -> tuple[str, str, np.ndarray | None, int, int]:
         """Typed input: no STT involved, otherwise identical turn handling
         (crisis check, agent run, self-check, chat history, optional TTS) —
-        see project-plan.md's text-input support notes."""
+        see docs/project-plan.md's text-input support notes."""
         return self._handle_turn(text, memory)
 
     def _synthesize_required(self, reply_text: str) -> tuple[np.ndarray, int]:
@@ -496,7 +523,7 @@ class Pipeline:
     def _checkin_prompt_line(self) -> str:
         """Computed fresh each turn (single cheap row read) rather than
         cached per-session, so it self-corrects immediately after
-        mark_checkin fires mid-session. See project-plan.md §8."""
+        mark_checkin fires mid-session. See docs/project-plan.md §8."""
         now = datetime.now(timezone.utc)
         last = get_last_checkin(self.profile.user_id)
         if last is None:
@@ -1027,7 +1054,7 @@ def api_get_checkin() -> dict:
 def api_get_safety_status() -> dict:
     """Read-only transparency surface — same 'never actually hidden'
     principle as /api/memories, /api/skills, /api/checkin. See
-    project-plan.md §9."""
+    docs/project-plan.md §9."""
     _require_pipeline()
     user_id = _pipeline.profile.user_id
     last = escalation.last_escalation(user_id)
@@ -1095,7 +1122,16 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     on, audio is synthesized before any reply frame is sent (voice is the
     product). Short-term memory is scoped to this one connection; long-term
     memory maintenance runs once, silently, when it ends — see
-    project-plan.md §5."""
+    docs/project-plan.md §5.
+
+    The local API token travels as a `?token=` query parameter here rather
+    than the header the HTTP routes use: the browser WebSocket constructor
+    cannot set request headers, and Starlette's HTTP middleware never runs
+    for a websocket scope regardless. Rejected before accept(), so the
+    handshake fails outright instead of opening and immediately closing."""
+    if API_TOKEN and not _token_matches(ws.query_params.get("token")):
+        await ws.close(code=1008)
+        return
     await ws.accept()
     _require_pipeline()
     memory = _pipeline.new_session_memory()

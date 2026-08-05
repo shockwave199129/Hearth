@@ -3,7 +3,7 @@ good at, since its voice is steered entirely by a natural-language
 description rather than by a speaker embedding (see ParlerEngine).
 
 Every preset here has to sound like Hearth: warm, calm, and unhurried, a
-steady presence that doesn't perform familiarity (project-plan.md §3's
+steady presence that doesn't perform familiarity (docs/project-plan.md §3's
 SYSTEM_PROMPT_TEMPLATE, Book Vol 2 Ch 7). That's a real constraint on the
 wording below, not decoration — Parler will happily read "very
 expressively" as bubbly ad-copy delivery, which is exactly the register

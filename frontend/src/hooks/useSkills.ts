@@ -26,7 +26,7 @@ interface UseSkillsResult {
 /** Backs Settings → Support techniques. The skills library is static
  * reference content the companion draws on via list_skills/get_skill tool
  * calls (skills/tools.py) — read-only here, unlike memory, since there's
- * nothing user-specific to edit. See project-plan.md §6. */
+ * nothing user-specific to edit. See docs/project-plan.md §6. */
 export function useSkills(): UseSkillsResult {
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [loading, setLoading] = useState(true);

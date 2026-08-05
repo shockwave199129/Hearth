@@ -4,7 +4,7 @@ system prompt, skill library, or model tier:
 
     python -m app.eval.llm_judge
 
-See project-plan.md §7."""
+See docs/project-plan.md §7."""
 import json
 from pathlib import Path
 

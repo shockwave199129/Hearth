@@ -1,4 +1,4 @@
-"""Persisted, encrypted conversation history — project-plan.md §1's
+"""Persisted, encrypted conversation history — docs/project-plan.md §1's
 chat_history.db (folded into the same profile.db file as everything else,
 same convention as checkin/crisis_events/escalations). Content is Fernet-
 encrypted at rest, same pattern as long_term.py's Chroma documents.

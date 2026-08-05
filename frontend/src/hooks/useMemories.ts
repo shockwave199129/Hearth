@@ -27,7 +27,7 @@ interface UseMemoriesResult {
 /** Backs Settings → Memory. Long-term memories are otherwise only ever
  * touched by the companion itself via tool calls (memory/tools.py) — this
  * is the "never actually hidden from them if they go look" surface from
- * project-plan.md §5. */
+ * docs/project-plan.md §5. */
 export function useMemories(): UseMemoriesResult {
   const [memories, setMemories] = useState<MemorySummary[]>([]);
   const [loading, setLoading] = useState(true);

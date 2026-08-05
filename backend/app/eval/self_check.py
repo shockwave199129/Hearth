@@ -2,7 +2,7 @@
 (voice latency matters). The real quality assurance is the offline
 rubric-based harness (eval/llm_judge.py, run during development); this is
 just a light safety net catching the most obvious violations before a
-reply is spoken. See project-plan.md §7.
+reply is spoken. See docs/project-plan.md §7.
 
 This also operationalizes a subset of Book Volume 2 Chapter 24's ten named
 Anti-Patterns as mechanical checks — the prompt-side half of the same list

@@ -1,7 +1,7 @@
 """Separate, lightweight llama.cpp embedding server for EmbeddingGemma-300M.
 Only started when long-term memory is actually used (first call to embed()),
 so tiers B/C don't pay for it until a memory tool call fires.
-See project-plan.md §5 — embedding calls are cheap and only fire at
+See docs/project-plan.md §5 — embedding calls are cheap and only fire at
 create/update/search time, not on every message."""
 import requests
 

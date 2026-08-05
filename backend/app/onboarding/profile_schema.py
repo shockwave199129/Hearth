@@ -1,4 +1,4 @@
-"""See project-plan.md §4 — short, mostly-optional profile, bucketed age
+"""See docs/project-plan.md §4 — short, mostly-optional profile, bucketed age
 range rather than raw DOB to minimize sensitive data at rest."""
 from datetime import datetime
 
@@ -37,7 +37,7 @@ class UserProfile(BaseModel):
     # deliberate safety-critical design choice, not something this
     # convenience toggle should be able to silence.
     speak_replies: bool = True
-    # Opt-in emergency contact for the safety escalation path (project-plan.md
+    # Opt-in emergency contact for the safety escalation path (docs/project-plan.md
     # §9) — off by default, and escalation.py additionally requires a
     # repeated crisis pattern before ever acting on this. See
     # app/safety/escalation.py's module docstring for the full gating logic.

@@ -9,7 +9,7 @@ mic → Moonshine (STT) → LFM2.5 via a LangChain agent → Parler-TTS-Tiny-v1/
 ```
 
 For the full design history and rationale, see
-[`project-plan.md`](project-plan.md) and [`project-phases.md`](project-phases.md).
+[`docs/project-plan.md`](docs/project-plan.md) and [`project-phases.md`](project-phases.md).
 For how the app actually works today, see [`docs/architecture.md`](docs/architecture.md).
 
 ## Stack

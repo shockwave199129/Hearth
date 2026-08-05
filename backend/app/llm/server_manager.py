@@ -4,7 +4,7 @@ eval harness); tool-calling chat goes through `langchain_openai.ChatOpenAI`
 pointed at this same process's `/v1/chat/completions` (see main.py's
 create_agent wiring), not through this class. `EmbeddingServer` in
 memory/embedder.py reuses the shared `LlamaCppProcess` base for
-EmbeddingGemma. See project-plan.md §1/§2/§5."""
+EmbeddingGemma. See docs/project-plan.md §1/§2/§5."""
 import atexit
 import platform
 import subprocess

@@ -1,4 +1,4 @@
-"""CRUD for the `profiles` table — multi-profile support (project-plan.md
+"""CRUD for the `profiles` table — multi-profile support (docs/project-plan.md
 §4 as extended for real profile switching). Each profile is injected into
 the system prompt every session as static context, not something to
 re-retrieve via search. Cross-module cascade deletion (memory, checkin,

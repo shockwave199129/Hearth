@@ -1,4 +1,4 @@
-"""Maps detected hardware to a model tier (S/A/B/C), see project-plan.md §2."""
+"""Maps detected hardware to a model tier (S/A/B/C), see docs/project-plan.md §2."""
 import json
 from dataclasses import dataclass, asdict
 

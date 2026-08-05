@@ -4,7 +4,7 @@ keyword-based: single ambiguous words ("die", "kill") false-positive
 constantly ("that meeting killed me"), so patterns require a clearer
 first-person crisis framing. This is a blunt safety net, not a clinical
 screening tool — it needs review by a licensed mental health professional
-before being relied on, same as the skills library. See project-plan.md §9.
+before being relied on, same as the skills library. See docs/project-plan.md §9.
 """
 import re
 from dataclasses import dataclass

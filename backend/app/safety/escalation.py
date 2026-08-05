@@ -1,4 +1,4 @@
-"""The only network-facing module in the app — see project-plan.md §9.
+"""The only network-facing module in the app — see docs/project-plan.md §9.
 
 - The real consent capture (onboarding opt-in + emergency contact) and the
   trigger/pattern logic are implemented for real.

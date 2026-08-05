@@ -7,12 +7,17 @@
  * fires before the backend is listening would fail once and permanently show
  * an error, instead of the backend just still being mid-boot. */
 
-import { apiUrl } from "./backendUrl";
+import { API_TOKEN_HEADER, apiToken, apiUrl } from "./backendUrl";
 
 /** All frontend→backend HTTP goes through here so packaged builds hit
- * `127.0.0.1:48173` instead of Tauri's asset origin (see backendUrl.ts). */
+ * `127.0.0.1:48173` instead of Tauri's asset origin (see backendUrl.ts),
+ * and so the per-launch local API token is attached in exactly one place. */
 export function backendFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(apiUrl(path), init);
+  const token = apiToken();
+  if (!token) return fetch(apiUrl(path), init);
+  const headers = new Headers(init?.headers);
+  headers.set(API_TOKEN_HEADER, token);
+  return fetch(apiUrl(path), { ...init, headers });
 }
 
 /** Per-attempt timeout — a backend that's mid-boot may have its port bound

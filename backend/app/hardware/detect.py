@@ -1,4 +1,4 @@
-"""RAM, VRAM, CPU probe — run once per launch, see project-plan.md §2."""
+"""RAM, VRAM, CPU probe — run once per launch, see docs/project-plan.md §2."""
 import re
 import shutil
 import subprocess

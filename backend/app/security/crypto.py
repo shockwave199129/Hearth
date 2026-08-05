@@ -1,13 +1,16 @@
 """Key management + symmetric encryption for everything under data/.
-See project-plan.md §3 — the threat model is a shared computer, theft, or
+See docs/project-plan.md §3 — the threat model is a shared computer, theft, or
 casual access, not network interception, so OS-keychain-gated key storage
 with no daily password prompt is the practical default.
 """
+import secrets
+
 import keyring
 from cryptography.fernet import Fernet
 
 SERVICE_NAME = "hearth"
 KEY_ACCOUNT = "data_key"
+SQLCIPHER_KEY_ACCOUNT = "sqlcipher_key"
 
 
 def get_or_create_key() -> bytes:
@@ -18,14 +21,45 @@ def get_or_create_key() -> bytes:
     return key.encode()
 
 
+def is_sqlcipher_raw_key(value: str) -> bool:
+    """SQLCipher only treats a `PRAGMA key = "x'...'"` argument as a raw key
+    when it is exactly 64 hex characters (32 bytes). Anything else is a
+    passphrase, from which it derives the key via PBKDF2."""
+    if len(value) != 64:
+        return False
+    try:
+        bytes.fromhex(value)
+    except ValueError:
+        return False
+    return True
+
+
 def get_or_create_sqlcipher_key_hex() -> str:
-    """SQLCipher wants a raw key, not a Fernet token — derive a separate
-    32-byte hex key from the same keychain entry point so there's still only
-    one secret a user could ever need to back up or rotate."""
-    key = keyring.get_password(SERVICE_NAME, "sqlcipher_key")
+    """The hex string handed to `PRAGMA key` — a separate secret from the
+    Fernet data key, but stored behind the same keychain entry point so
+    there is still only one place a user backs up or rotates.
+
+    New installs get `secrets.token_hex(32)`, which is raw-key mode: 32
+    bytes of entropy used directly as the key, no derivation.
+
+    Installs created before that stored a Fernet key (a 44-character base64
+    *string*) and passed `key.encode().hex()` — 88 hex characters. That is
+    not a valid raw key, so SQLCipher silently treated it as a passphrase
+    and ran PBKDF2 over it. Those databases are encrypted under the
+    passphrase path and can only ever be opened that way, which is why the
+    legacy value is preserved byte-for-byte here instead of being upgraded:
+    "fixing" the length in place would change the derivation and make every
+    existing profile.db undecryptable. Re-keying an existing database means
+    `PRAGMA rekey` on an already-open connection, not a new key at open
+    time — a deliberate migration, not something to do implicitly on boot.
+    """
+    key = keyring.get_password(SERVICE_NAME, SQLCIPHER_KEY_ACCOUNT)
     if key is None:
-        key = Fernet.generate_key().decode()  # 32 url-safe base64 bytes, plenty of entropy
-        keyring.set_password(SERVICE_NAME, "sqlcipher_key", key)
+        raw_key_hex = secrets.token_hex(32)
+        keyring.set_password(SERVICE_NAME, SQLCIPHER_KEY_ACCOUNT, raw_key_hex)
+        return raw_key_hex
+    if is_sqlcipher_raw_key(key):
+        return key
     return key.encode().hex()
 
 

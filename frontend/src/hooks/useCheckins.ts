@@ -15,7 +15,7 @@ interface UseCheckinsResult {
 
 /** Backs Settings → Check-ins. The companion decides check-in timing itself
  * (system prompt state + mark_checkin tool, checkin/tools.py) — this is a
- * read-only view of that state, not a control. See project-plan.md §8. */
+ * read-only view of that state, not a control. See docs/project-plan.md §8. */
 export function useCheckins(): UseCheckinsResult {
   const [status, setStatus] = useState<CheckinStatus | null>(null);
   const [loading, setLoading] = useState(true);

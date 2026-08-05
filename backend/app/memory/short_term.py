@@ -3,7 +3,7 @@ then summarizes the oldest chunk into a running session_summary and drops
 the raw turns — a hand-built version of LangChain's summary-buffer memory,
 sized to be easy for a 1.2B model to summarize reliably. One instance per
 live session (websocket connection or CLI run), not shared across sessions.
-See project-plan.md §4."""
+See docs/project-plan.md §4."""
 import uuid
 
 from app.config import SHORT_TERM_SUMMARIZE_CHUNK, SHORT_TERM_WINDOW

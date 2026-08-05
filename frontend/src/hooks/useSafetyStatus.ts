@@ -16,7 +16,7 @@ interface UseSafetyStatusResult {
 /** Backs Settings → Safety. The crisis/escalation path (safety/crisis_detector.py,
  * safety/escalation.py) runs entirely in the background — this is a
  * read-only transparency view, same "never actually hidden" principle as
- * Memory/Skills/Check-ins. See project-plan.md §9. */
+ * Memory/Skills/Check-ins. See docs/project-plan.md §9. */
 export function useSafetyStatus(): UseSafetyStatusResult {
   const [status, setStatus] = useState<SafetyStatus | null>(null);
   const [loading, setLoading] = useState(true);

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One-time setup: detects hardware/tier, then downloads only the model
 files that tier actually needs into backend/models/. Safe to re-run —
-skips anything already present. See project-plan.md §1/§10.
+skips anything already present. See docs/project-plan.md §1/§10.
 
 This is now largely superseded by the packaged app's own in-app setup
 screen (see backend/app/setup/ and its own /api/setup/* endpoints), which

@@ -1,6 +1,6 @@
 """TTS engines: Parler-TTS-Tiny-v1 (tiers S/A) with an ONNX Kokoro-82M
 fallback for tiers B/C, where Parler would be usable but slow enough to
-hurt the conversational feel. See project-plan.md §2.
+hurt the conversational feel. See docs/project-plan.md §2.
 
 Weights are loaded from plain directories under TTS_MODELS_DIR (populated by
 app.setup.models during first-run setup), not from the Hugging Face hub

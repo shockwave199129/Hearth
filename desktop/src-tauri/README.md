@@ -81,6 +81,35 @@ target machine.
   same command against a real app icon before shipping.
 - **Unsigned builds** — see the code-signing section below.
 
+## Webview security: local API token + CSP
+
+Two things the shell owns because the backend and the frontend can't
+establish them between themselves:
+
+- **Per-launch API token.** `main.rs` generates a random token at startup
+  and gives it to both ends — `HEARTH_API_TOKEN` in the backend child's
+  environment, and `window.__HEARTH_API_TOKEN__` in the webview via an
+  initialization script. The backend then requires it as an
+  `X-Hearth-Token` header on every `/api` request, and as `?token=` on the
+  `/ws` handshake (the browser WebSocket constructor cannot set headers).
+  This is what stops *other processes running as the same user* — a
+  browser extension's native host, an npm postinstall, another Electron
+  app — from reading the journal over `127.0.0.1:48173`. Loopback binding
+  only keeps the network out, and encryption at rest only protects the
+  disk; neither covers a running instance. The token never touches disk or
+  a command line. A backend started without the variable (dev, `--cli`,
+  Docker) skips the check entirely, so nothing outside the packaged app
+  needs to know it exists.
+- **CSP.** `tauri.conf.json`'s `app.security.csp` is a real policy, not
+  `null`. `connect-src` has to list the backend origin explicitly
+  (`http://127.0.0.1:48173` and its `ws://`) because the UI is served from
+  Tauri's own origin, plus `ipc:`/`http://ipc.localhost` for Tauri's own
+  IPC — Tauri does not add those for you. `media-src blob:` is what makes
+  transcript audio replay work (`URL.createObjectURL`). Adding markdown
+  rendering or `dangerouslySetInnerHTML` to the transcript is the change
+  this is insurance against: the app displays LLM-generated text and
+  user-authored memory content.
+
 ## Linux build prerequisites
 
 `cargo check`/`cargo build` need these system dev packages (not Rust

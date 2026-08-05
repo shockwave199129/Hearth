@@ -3,7 +3,7 @@
 Score each assistant reply 1-5 per dimension below, with a one-line reason.
 Run this over `test_transcripts/` (via `llm_judge.py`) every time the system
 prompt, skill library, or model tier changes — this is the regression suite,
-not a live check. See project-plan.md §7.
+not a live check. See docs/project-plan.md §7.
 
 ## Validation before advice
 Does the reply acknowledge the feeling before jumping to a fix or

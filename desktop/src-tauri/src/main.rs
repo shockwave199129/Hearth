@@ -67,14 +67,27 @@ fn apply_spawn_flags(cmd: &mut Command) {
     cmd.process_group(0);
 }
 
-fn spawn_backend_dev() -> std::io::Result<Child> {
+/// Per-launch shared secret for the local API. The backend binds to
+/// loopback, which keeps the network out but not other processes running as
+/// the same user — any of them can otherwise read the whole journal over
+/// `127.0.0.1:48173`. Generated here because this process is the only one
+/// that can hand it to both ends (env var to the backend child, injected
+/// global to the webview) without it ever touching disk or a command line
+/// other processes can read.
+fn generate_api_token() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
+}
+
+fn spawn_backend_dev(api_token: &str) -> std::io::Result<Child> {
     let dir = dev_backend_dir();
     // Windows typically exposes `python`; many Unix setups only have
     // `python3`. Try both so `tauri:dev` works on either.
     let mut last_err: Option<std::io::Error> = None;
     for python in ["python", "python3"] {
         let mut cmd = Command::new(python);
-        cmd.args(["-m", "app.main"]).current_dir(&dir);
+        cmd.args(["-m", "app.main"])
+            .current_dir(&dir)
+            .env("HEARTH_API_TOKEN", api_token);
         apply_spawn_flags(&mut cmd);
         match cmd.spawn() {
             Ok(child) => return Ok(child),
@@ -97,7 +110,7 @@ fn spawn_backend_dev() -> std::io::Result<Child> {
 /// chains through to the llama-server child process it spawns in turn.
 /// Windows needs no equivalent — its DLL search order checks the launched
 /// exe's own directory first, and all the DLLs already sit there.
-fn spawn_backend_release(app: &tauri::AppHandle) -> std::io::Result<Child> {
+fn spawn_backend_release(app: &tauri::AppHandle, api_token: &str) -> std::io::Result<Child> {
     let resource_dir = app
         .path()
         .resource_dir()
@@ -111,6 +124,7 @@ fn spawn_backend_release(app: &tauri::AppHandle) -> std::io::Result<Child> {
 
     let mut cmd = Command::new(&backend_exe);
     cmd.env("LLAMA_SERVER_BIN", &llama_server_bin);
+    cmd.env("HEARTH_API_TOKEN", api_token);
 
     if cfg!(target_os = "macos") {
         cmd.env("DYLD_LIBRARY_PATH", &llama_dir);
@@ -185,13 +199,26 @@ fn notify_backend_spawn_failed(app: &tauri::AppHandle, message: &str) {
 }
 
 fn main() {
+    let api_token = generate_api_token();
+    // Runs before any page script, so the first fetch the app makes already
+    // has the token. An initialization script rather than an injected
+    // `<script>` tag or an `eval` after load: the CSP set in
+    // tauri.conf.json blocks inline scripts, and a token that arrives
+    // asynchronously would race the boot-time /api/setup/status call.
+    let token_script = format!(
+        "window.__HEARTH_API_TOKEN__ = {};",
+        serde_json::to_string(&api_token).expect("token is a plain string")
+    );
+    let spawn_token = api_token.clone();
+
     tauri::Builder::default()
         .manage(BackendProcess(Mutex::new(None)))
-        .setup(|app| {
+        .append_invoke_initialization_script(&token_script)
+        .setup(move |app| {
             let result = if cfg!(debug_assertions) {
-                spawn_backend_dev()
+                spawn_backend_dev(&spawn_token)
             } else {
-                spawn_backend_release(app.handle())
+                spawn_backend_release(app.handle(), &spawn_token)
             };
             match result {
                 Ok(child) => {

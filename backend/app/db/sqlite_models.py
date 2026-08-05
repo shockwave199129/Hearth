@@ -3,7 +3,8 @@ Multi-profile: each local install can hold several named profiles
 (`profiles`, keyed by `user_id`), with exactly one marked active at a time
 (`active_profile`) — this is still a single-process desktop app (one
 conversation at a time), not concurrent multi-tenant serving; switching
-profiles is a deliberate user action. See project-plan.md §1/§4."""
+profiles is a deliberate user action. See docs/project-plan.md §1/§4."""
+import threading
 import uuid
 from pathlib import Path
 
@@ -59,7 +60,7 @@ CREATE TABLE IF NOT EXISTS setup_state (
 """
 
 # One row per profile tracking when the companion last checked in on them
-# (project-plan.md §8).
+# (docs/project-plan.md §8).
 CHECKIN_SCHEMA = """
 CREATE TABLE IF NOT EXISTS checkin (
     user_id TEXT PRIMARY KEY,
@@ -79,7 +80,7 @@ CREATE TABLE IF NOT EXISTS relationship_profiles (
 );
 """
 
-# Crisis/escalation history (project-plan.md §9) — append-only, unlike the
+# Crisis/escalation history (docs/project-plan.md §9) — append-only, unlike the
 # single-row tables above, since the pattern-detection logic in
 # safety/escalation.py needs to look back over multiple events per profile.
 CRISIS_EVENTS_SCHEMA = """
@@ -103,7 +104,7 @@ CREATE TABLE IF NOT EXISTS escalations (
 );
 """
 
-# Persisted, encrypted conversation history (project-plan.md §1's
+# Persisted, encrypted conversation history (docs/project-plan.md §1's
 # chat_history.db) — content is Fernet-encrypted before insert, same
 # pattern as long_term.py's Chroma documents. Backs the "replay a past
 # reply" feature (memory/chat_history.py).
@@ -228,19 +229,11 @@ def _migrate_legacy_singleton_profile(conn) -> None:
     conn.commit()
 
 
-def get_connection(db_path: Path):
-    """Returns a sqlcipher3 connection (dbapi2-compatible with stdlib
-    sqlite3), keyed from the OS-keychain-backed secret in security/crypto.py.
-    Deferred import: sqlcipher3 pulls in a compiled libsqlcipher, only
-    needed once encryption is actually exercised."""
-    from sqlcipher3 import dbapi2 as sqlcipher
-
-    from app.security.crypto import get_or_create_sqlcipher_key_hex
-
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlcipher.connect(str(db_path))
-    conn.execute(f"PRAGMA key = \"x'{get_or_create_sqlcipher_key_hex()}'\"")
-    conn.execute("PRAGMA journal_mode = WAL")
+def init_schema(conn) -> None:
+    """Create/migrate every table. Idempotent, but ~15 statements plus a
+    `PRAGMA table_info` probe and a `sqlite_master` scan, so it runs once
+    per database file per process (see `get_connection`) rather than on
+    every open."""
     conn.execute(_LEGACY_PROFILE_SCHEMA)
     conn.execute(PROFILES_SCHEMA)
     conn.execute(ACTIVE_PROFILE_SCHEMA)
@@ -253,4 +246,107 @@ def get_connection(db_path: Path):
     _ensure_columns(conn, "profiles", _PROFILES_TEXT_INPUT_COLUMNS)
     conn.commit()
     _migrate_legacy_singleton_profile(conn)
-    return conn
+
+
+class PooledConnection:
+    """Borrowed handle onto a cached sqlcipher connection.
+
+    `close()` returns it to the pool instead of closing it — the same
+    contract as a pooled connection in SQLAlchemy/psycopg, and the reason
+    the store modules' existing open→query→`close()` shape needs no
+    changes. The rollback on release matches what a real `close()` would
+    have done with uncommitted work, so a store function that forgets to
+    commit still discards its writes rather than leaving a write
+    transaction open across the pool.
+    """
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def close(self) -> None:
+        try:
+            self._conn.rollback()
+        except Exception:
+            # A connection too broken to roll back is not reusable; drop it
+            # so the next borrow opens a fresh one instead of handing back
+            # a dead handle forever.
+            _discard(self._conn)
+
+
+# One connection per (thread, database file). Threads are the unit because
+# sqlite3 objects are not safe to share across them by default, and FastAPI
+# runs sync route handlers on a worker pool — a process-wide singleton would
+# need `check_same_thread=False` plus external serialization.
+_local = threading.local()
+_schema_lock = threading.Lock()
+_initialized: set[str] = set()
+
+
+def _discard(conn) -> None:
+    pool = getattr(_local, "connections", None)
+    if pool:
+        for key, cached in list(pool.items()):
+            if cached is conn:
+                del pool[key]
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+
+def get_connection(db_path: Path) -> PooledConnection:
+    """Returns a sqlcipher connection (dbapi2-compatible with stdlib
+    sqlite3), keyed from the OS-keychain-backed secret in security/crypto.py.
+    Deferred import: sqlcipher3 pulls in a compiled libsqlcipher, only
+    needed once encryption is actually exercised.
+
+    Connections are pooled per thread rather than opened per call. Keying a
+    connection makes SQLCipher run PBKDF2 — deliberately expensive — so the
+    old open-per-call shape charged a key derivation plus the full schema
+    DDL to every single store function; a settings write alone opens four
+    connections. Callers still `close()`, which now releases back to the
+    pool (see `PooledConnection`).
+    """
+    from sqlcipher3 import dbapi2 as sqlcipher
+
+    from app.security.crypto import get_or_create_sqlcipher_key_hex
+
+    key = str(db_path)
+    pool = getattr(_local, "connections", None)
+    if pool is None:
+        pool = _local.connections = {}
+    cached = pool.get(key)
+    if cached is not None:
+        return PooledConnection(cached)
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlcipher.connect(str(db_path))
+    conn.execute(f"PRAGMA key = \"x'{get_or_create_sqlcipher_key_hex()}'\"")
+    conn.execute("PRAGMA journal_mode = WAL")
+    # Guarded across threads, not just within one: two threads opening the
+    # same file for the first time would otherwise run the migration
+    # concurrently.
+    with _schema_lock:
+        if key not in _initialized:
+            init_schema(conn)
+            _initialized.add(key)
+    pool[key] = conn
+    return PooledConnection(conn)
+
+
+def close_pooled_connections() -> None:
+    """Drops this thread's pooled connections and forgets which files have
+    been initialized. Tests that point a store at a fresh temp database, or
+    delete one mid-run, need this; nothing in the app calls it."""
+    pool = getattr(_local, "connections", None) or {}
+    for conn in pool.values():
+        try:
+            conn.close()
+        except Exception:
+            pass
+    pool.clear()
+    with _schema_lock:
+        _initialized.clear()

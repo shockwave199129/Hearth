@@ -1,5 +1,5 @@
 """Long-term, cross-session memory — tool-based, not auto-injected into the
-system prompt (see project-plan.md §5). Multi-profile: every record carries
+system prompt (see docs/project-plan.md §5). Multi-profile: every record carries
 a user_id in its Chroma metadata, and every read/write is scoped to one —
 get/update/delete additionally verify the stored user_id matches before
 acting, so a leaked/guessed memory id can't reach across profiles. Only the

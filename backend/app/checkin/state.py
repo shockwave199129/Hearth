@@ -1,6 +1,6 @@
 """Tracks when the companion last checked in on each profile — one row per
 user_id in profile.db, same pattern as onboarding/profile_store.py. See
-project-plan.md §8."""
+docs/project-plan.md §8."""
 from datetime import datetime
 
 from app.config import DATA_DIR
