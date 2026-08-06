@@ -21,10 +21,10 @@ def client():
 
 @pytest.fixture
 def secured(monkeypatch):
-    """Token set, as the packaged app runs. The middleware reads the module
-    global at request time, so patching it is equivalent to launching with
-    HEARTH_API_TOKEN set."""
-    monkeypatch.setattr(main, "API_TOKEN", TOKEN)
+    """Token set, as the packaged app runs. Auth middleware reads
+    ``app.config.API_TOKEN`` at request time, so patching it is equivalent
+    to launching with HEARTH_API_TOKEN set."""
+    monkeypatch.setattr("app.config.API_TOKEN", TOKEN)
 
 
 def test_unauthenticated_when_no_token_is_configured(client):

@@ -199,16 +199,19 @@ doesn't have one yet).
 | Windows | Rust (MSVC toolchain) + [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) (C++ workload), Python 3.12, Node/pnpm. WiX Toolset v3 for `.msi` is auto-downloaded by Tauri's bundler on first build. | **Preferred:** `.\scripts\build_windows_installer.ps1` from repo root (CI parity). Manual: `scripts/build_backend.ps1` → `python scripts/fetch_llama_cpp.py` → `python scripts/fetch_setup_python.py` → `pnpm run tauri:build` (from `desktop/`) | `.../bundle/msi/*.msi`, `.../nsis/*-setup.exe` |
 | macOS | Xcode Command Line Tools (`xcode-select --install`), Python 3.12 | `scripts/build_backend.sh` → `scripts/fetch_llama_cpp.py` → `scripts/fetch_setup_python.py` → `pnpm run tauri:build` (from `desktop/`) | `.../bundle/dmg/*.dmg`, `.../bundle/macos/*.app` |
 
-**Code signing — not done here.** Unsigned builds will warn or outright
-block users on Windows (SmartScreen) and macOS (Gatekeeper will say the
-app "is damaged" or refuse to open it on any machine but the one that
-built it). Before real distribution you need:
-- **Windows**: a code-signing certificate, wired into `tauri-action` via
-  the `TAURI_SIGNING_PRIVATE_KEY`-style secrets (commented in
-  `.github/workflows/build.yml`).
-- **macOS**: an Apple Developer ID certificate + notarization
-  (`APPLE_CERTIFICATE`/`APPLE_ID`/`APPLE_TEAM_ID` etc., also commented in
-  the workflow) — Apple Developer Program membership required ($99/yr).
+**Code signing — wired in CI, gated on secrets.**
+`.github/workflows/build.yml` imports certificates and passes the Tauri
+signing/notarization env vars when the matching repo secrets are set.
+Without them the build still succeeds but stays unsigned (SmartScreen /
+Gatekeeper will warn or block). Before real distribution, add:
+
+- **Windows**: `WINDOWS_CERTIFICATE` (base64 `.pfx`) +
+  `WINDOWS_CERTIFICATE_PASSWORD`. Optional updater key:
+  `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+- **macOS**: Apple Developer ID certificate + notarization secrets —
+  `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD`,
+  `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific),
+  `APPLE_TEAM_ID`. Apple Developer Program membership required ($99/yr).
 - **Linux**: no signing required for local `.deb`/`.rpm` install, though a
   real distribution channel (a PPA, a signed repo) would want GPG-signed
   packages.

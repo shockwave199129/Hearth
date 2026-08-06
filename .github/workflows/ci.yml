@@ -81,7 +81,7 @@ jobs:
         run: pytest -m "not perf"
 
   frontend:
-    name: Frontend (tsc)
+    name: Frontend (tsc + vitest + playwright)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -102,9 +102,22 @@ jobs:
 
       # `pnpm build` already runs `tsc --noEmit && vite build`; this calls
       # the typecheck script directly so a type error reports as a type
-      # error instead of as a failed bundle. There is no ESLint config and
-      # no test runner in this package yet — when Vitest lands (see the
-      # review's medium-term items), add it as another step here.
+      # error instead of as a failed bundle.
       - name: Typecheck
         working-directory: frontend
         run: pnpm run typecheck
+
+      - name: Unit tests (Vitest)
+        working-directory: frontend
+        run: pnpm run test
+
+      # One mocked onboarding→chat smoke path — see frontend/e2e/. Chromium
+      # only; --with-deps pulls the OS libs the headless browser needs on
+      # a fresh ubuntu runner.
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E smoke (Playwright)
+        working-directory: frontend
+        run: pnpm run test:e2e

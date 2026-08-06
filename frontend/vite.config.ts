@@ -1,5 +1,5 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
 // Host-side Vite defaults to loopback. In Docker Compose the backend is a
 // sibling service — set VITE_BACKEND_PROXY=http://backend:48173.
@@ -15,5 +15,13 @@ export default defineConfig({
       "/ws": { target: backendWsProxy, ws: true },
       "/api": { target: backendProxy },
     },
+  },
+  test: {
+    environment: "jsdom",
+    globals: false,
+    setupFiles: ["./src/test/setup.ts"],
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // Playwright lives under e2e/ and is run separately.
+    exclude: ["e2e/**", "node_modules/**"],
   },
 });

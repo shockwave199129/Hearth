@@ -67,8 +67,8 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          - ubuntu-24.04
-          - ubuntu-24.04-arm
+          - ubuntu-22.04
+          - ubuntu-22.04-arm
           - windows-latest
           - windows-11-arm
           - macos-26
@@ -166,18 +166,71 @@ jobs:
             echo "value=0.0.0" >> "$GITHUB_OUTPUT"
           fi
 
+      # Code signing / notarization — no-ops when the matching secrets are
+      # unset, so unsigned draft builds keep working until certificates are
+      # provisioned. Required secrets (see desktop/src-tauri/README.md):
+      #   macOS: APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD,
+      #          APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD (app-specific),
+      #          APPLE_TEAM_ID
+      #   Windows: WINDOWS_CERTIFICATE (base64 .pfx), WINDOWS_CERTIFICATE_PASSWORD
+      #   Updater (optional): TAURI_SIGNING_PRIVATE_KEY,
+      #                       TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+      - name: Import Apple Developer certificate
+        if: startsWith(matrix.platform, 'macos')
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: hearth-ci-temp
+        run: |
+          if [ -z "${APPLE_CERTIFICATE:-}" ]; then
+            echo "APPLE_CERTIFICATE unset — building unsigned (Gatekeeper will block distribution)."
+            exit 0
+          fi
+          CERTIFICATE_PATH="$RUNNER_TEMP/hearth_dev_id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/hearth-signing.keychain-db"
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Import Windows code-signing certificate
+        if: startsWith(matrix.platform, 'windows')
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE) {
+            Write-Host "WINDOWS_CERTIFICATE unset — building unsigned (SmartScreen will warn)."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "hearth-codesign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My `
+            -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force)
+          echo "WINDOWS_CERTIFICATE_PATH=$pfx" >> $env:GITHUB_ENV
+
       - name: Build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Code signing (needed for a smooth install experience, not just
-          # to produce a bundle) is deliberately NOT wired up here — add
-          # these as repo secrets once you have real certificates:
-          # - Windows: TAURI_SIGNING_PRIVATE_KEY / a real code-signing cert
-          # - macOS: APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
-          #   APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD,
-          #   APPLE_TEAM_ID (needed for notarization, or Gatekeeper blocks
-          #   the app on any machine but the one that built it)
+          # Populated from repo secrets when present; empty values leave the
+          # build unsigned. Tauri/macos-notarization reads these directly.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: desktop
           tagName: ${{ github.ref_name }}
