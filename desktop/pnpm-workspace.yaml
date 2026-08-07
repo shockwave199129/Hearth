@@ -1,0 +1,8 @@
+# Scopes pnpm to this directory, so `pnpm install` here resolves against
+# desktop/pnpm-lock.yaml instead of walking up to a repo-root workspace and
+# validating frontend/package.json too — which made --frozen-lockfile fail
+# in CI every time frontend's dependencies moved on their own (Dependabot
+# updates frontend/pnpm-lock.yaml, never a root one). Mirrors
+# frontend/pnpm-workspace.yaml, which exists for the same reason.
+packages:
+  - '.'
