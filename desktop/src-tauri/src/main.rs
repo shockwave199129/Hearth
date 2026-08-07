@@ -78,7 +78,7 @@ fn generate_api_token() -> String {
     uuid::Uuid::new_v4().simple().to_string()
 }
 
-fn spawn_backend_dev(api_token: &str) -> std::io::Result<Child> {
+fn spawn_backend_dev(api_token: &str, app_version: &str) -> std::io::Result<Child> {
     let dir = dev_backend_dir();
     // Windows typically exposes `python`; many Unix setups only have
     // `python3`. Try both so `tauri:dev` works on either.
@@ -87,7 +87,8 @@ fn spawn_backend_dev(api_token: &str) -> std::io::Result<Child> {
         let mut cmd = Command::new(python);
         cmd.args(["-m", "app.main"])
             .current_dir(&dir)
-            .env("HEARTH_API_TOKEN", api_token);
+            .env("HEARTH_API_TOKEN", api_token)
+            .env("HEARTH_APP_VERSION", app_version);
         apply_spawn_flags(&mut cmd);
         match cmd.spawn() {
             Ok(child) => return Ok(child),
@@ -122,9 +123,15 @@ fn spawn_backend_release(app: &tauri::AppHandle, api_token: &str) -> std::io::Re
     let llama_dir = resource_dir.join("llama-cpp");
     let llama_server_bin = llama_dir.join(exe_name("llama-server"));
 
+    // Same string the installer was stamped with (from the v* tag via
+    // `tauri build --config '{"version":"..."}'`). Keeps crash reports and
+    // backend logs aligned with Add/Remove Programs / .deb version.
+    let app_version = app.package_info().version.to_string();
+
     let mut cmd = Command::new(&backend_exe);
     cmd.env("LLAMA_SERVER_BIN", &llama_server_bin);
     cmd.env("HEARTH_API_TOKEN", api_token);
+    cmd.env("HEARTH_APP_VERSION", &app_version);
 
     if cfg!(target_os = "macos") {
         cmd.env("DYLD_LIBRARY_PATH", &llama_dir);
@@ -215,8 +222,11 @@ fn main() {
         .manage(BackendProcess(Mutex::new(None)))
         .append_invoke_initialization_script(&token_script)
         .setup(move |app| {
+            // package_info().version is whatever `tauri build --config` (or
+            // tauri.conf.json) stamped — CI derives it from the v* tag.
+            let app_version = app.package_info().version.to_string();
             let result = if cfg!(debug_assertions) {
-                spawn_backend_dev(&spawn_token)
+                spawn_backend_dev(&spawn_token, &app_version)
             } else {
                 spawn_backend_release(app.handle(), &spawn_token)
             };

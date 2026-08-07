@@ -14,6 +14,29 @@ $RepoRoot = Split-Path -Parent $ScriptDir
 $BackendDir = Join-Path $RepoRoot "backend"
 $ResourcesDir = Join-Path $RepoRoot "desktop\src-tauri\resources"
 
+# Stamp app/VERSION from HEARTH_APP_VERSION or the nearest v* tag so the
+# frozen backend matches the Tauri installer (v0.3.4 → 0.3.4).
+function Resolve-AppVersion {
+    $ver = $env:HEARTH_APP_VERSION
+    if (-not $ver) {
+        $tag = git -C $RepoRoot describe --tags --match "v*" --abbrev=0 2>$null
+        if ($LASTEXITCODE -eq 0 -and $tag) { $ver = $tag }
+    }
+    if ($ver) {
+        $ver = $ver.Trim()
+        if ($ver.StartsWith("v") -or $ver.StartsWith("V")) {
+            $ver = $ver.Substring(1)
+        }
+    }
+    if (-not $ver) { $ver = "0.0.0" }
+    return $ver
+}
+
+$AppVersion = Resolve-AppVersion
+$env:HEARTH_APP_VERSION = $AppVersion
+Set-Content -Path (Join-Path $BackendDir "app\VERSION") -Value $AppVersion -NoNewline
+Write-Host "Stamping backend version $AppVersion"
+
 python -m pip install --quiet uv
 
 uv pip install --quiet --system --only-binary=:all: -r "$BackendDir\requirements-common.txt"

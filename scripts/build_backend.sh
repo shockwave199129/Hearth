@@ -20,6 +20,27 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 BACKEND_DIR="$REPO_ROOT/backend"
 RESOURCES_DIR="$REPO_ROOT/desktop/src-tauri/resources"
 
+# Stamp app/VERSION from HEARTH_APP_VERSION or the nearest v* tag so the
+# frozen backend reports the same release as the Tauri installer (tag
+# v0.3.4 → 0.3.4). MSI/ProductVersion needs a bare numeric triple.
+resolve_version() {
+  local ver="${HEARTH_APP_VERSION:-}"
+  if [ -z "$ver" ]; then
+    ver="$(git -C "$REPO_ROOT" describe --tags --match 'v*' --abbrev=0 2>/dev/null || true)"
+  fi
+  ver="${ver#v}"
+  ver="${ver#V}"
+  if [ -z "$ver" ]; then
+    ver="0.0.0"
+  fi
+  printf '%s' "$ver"
+}
+
+APP_VERSION="$(resolve_version)"
+export HEARTH_APP_VERSION="$APP_VERSION"
+printf '%s\n' "$APP_VERSION" > "$BACKEND_DIR/app/VERSION"
+echo "Stamping backend version $APP_VERSION"
+
 # uv's resolver/installer is a drop-in for pip here (same --only-binary/-r
 # flags) and is dramatically faster than pip — --system installs into the
 # current interpreter rather than requiring a venv, matching plain

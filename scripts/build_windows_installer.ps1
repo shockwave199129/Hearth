@@ -4,7 +4,10 @@
 #
 # Usage (from repo root, in Windows PowerShell or PowerShell 7):
 #   .\scripts\build_windows_installer.ps1
-#   .\scripts\build_windows_installer.ps1 -Version 0.2.11
+#   .\scripts\build_windows_installer.ps1 -Version 0.3.4
+#
+# If -Version is omitted, uses the nearest v* git tag (v0.3.4 → 0.3.4),
+# or 0.0.0 when untagged — same rule as CI.
 #
 # If scripts are blocked by execution policy:
 #   powershell -ExecutionPolicy Bypass -File .\scripts\build_windows_installer.ps1
@@ -15,7 +18,7 @@
 # (C++ workload). WiX for MSI is fetched by Tauri on first build.
 # See desktop/src-tauri/README.md.
 param(
-    [string]$Version = "0.0.0"
+    [string]$Version = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,6 +32,18 @@ $BundleDir = Join-Path $RepoRoot "desktop\src-tauri\target\release\bundle"
 function Assert-Command([string]$Name) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
         throw "Required command not found on PATH: $Name"
+    }
+}
+
+if (-not $Version) {
+    $tag = git -C $RepoRoot describe --tags --match "v*" --abbrev=0 2>$null
+    if ($LASTEXITCODE -eq 0 -and $tag) {
+        $Version = $tag.Trim()
+        if ($Version.StartsWith("v") -or $Version.StartsWith("V")) {
+            $Version = $Version.Substring(1)
+        }
+    } else {
+        $Version = "0.0.0"
     }
 }
 
@@ -46,6 +61,8 @@ if ([version]$pyVer -lt [version]"3.12") {
 if ($Version -notmatch '^\d+\.\d+\.\d+$') {
     throw "Version must be numeric major.minor.build (MSI ProductVersion); got: $Version"
 }
+
+$env:HEARTH_APP_VERSION = $Version
 
 Write-Host "==> Install frontend dependencies"
 Push-Location $FrontendDir

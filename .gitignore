@@ -23,6 +23,10 @@ venv/
 # Local dev env overrides — see backend/.env.example for what's available.
 backend/.env
 
+# Stamped at freeze / release-build time from the v* git tag (see
+# scripts/build_backend.sh and app/version.py). Not a source of truth.
+backend/app/VERSION
+
 # Node (frontend/, desktop/ each have their own too, this covers the rest)
 node_modules/
 

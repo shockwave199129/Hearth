@@ -5,6 +5,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.version import resolve_app_version
+
 
 def _bundle_dir() -> Path:
     """Read-only app/bundle root (requirements files, frozen package data).
@@ -239,8 +241,9 @@ CRASH_LOGS_BUCKET_URL = os.environ.get(
     "https://hearth-sub.s3.ap-south-1.amazonaws.com/hearth_ai/crash-logs",
 )
 # Ships in report metadata so a received log can be matched to a build.
-# Overridable for CI / packaged builds that stamp a different version.
-APP_VERSION = os.environ.get("HEARTH_APP_VERSION", "0.3.1")
+# Resolved from HEARTH_APP_VERSION / baked app/VERSION / nearest v* git tag
+# — see app/version.py. Never hardcode a release number here.
+APP_VERSION = resolve_app_version()
 
 # Loopback by default (desktop / local venv). Docker sets APP_HOST=0.0.0.0
 # so the published port is reachable from the host / sibling containers.

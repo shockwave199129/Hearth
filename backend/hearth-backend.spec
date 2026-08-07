@@ -85,6 +85,12 @@ datas = [
     (str(BACKEND_DIR / "requirements-cpu.txt"), "."),
 ]
 
+# Baked by scripts/build_backend.* from the v* git tag / HEARTH_APP_VERSION
+# so crash reports and status can name the release without a .git tree.
+_version_file = APP_DIR / "VERSION"
+if _version_file.is_file():
+    datas.append((str(_version_file), "app"))
+
 hiddenimports = [
     # uvicorn dynamically selects its event loop / protocol implementations
     # at runtime — static import analysis doesn't see these.
