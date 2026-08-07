@@ -104,6 +104,94 @@ def test_each_thread_gets_its_own_connection(db_path):
     main_conn.close()
 
 
+# The shape found on a real install: a legacy table from a build before
+# communication_formality, response_length, relationship_*, the *_json
+# columns and evaluation_last_run_at existed.
+_OLDEST_LEGACY_PROFILE_SCHEMA = """
+CREATE TABLE profile (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    name TEXT NOT NULL,
+    age_range TEXT,
+    gender TEXT,
+    profession TEXT,
+    stressors TEXT NOT NULL,
+    preferred_voice TEXT NOT NULL,
+    companion_name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+"""
+
+
+def _raw_connection(db_path):
+    """A keyed connection that has NOT run init_schema — needed to plant a
+    legacy table before the migration ever sees the file."""
+    from sqlcipher3 import dbapi2 as sqlcipher
+
+    conn = sqlcipher.connect(str(db_path))
+    conn.execute(f"PRAGMA key = \"x'{crypto.get_or_create_sqlcipher_key_hex()}'\"")
+    return conn
+
+
+def test_truncated_legacy_profile_migrates_on_the_columns_it_has(db_path):
+    """Naming every column in one SELECT raised `no such column:
+    communication_formality` on older files, and because init_schema
+    propagates out of get_connection that left the app unable to open
+    profile.db at all — not merely unmigrated."""
+    raw = _raw_connection(db_path)
+    raw.execute(_OLDEST_LEGACY_PROFILE_SCHEMA)
+    raw.execute(
+        """INSERT INTO profile (id, name, stressors, preferred_voice, companion_name, created_at)
+           VALUES (1, 'Ada', '[]', 'male', 'Ember', '2026-01-01T00:00:00+00:00')"""
+    )
+    raw.commit()
+    raw.close()
+    sqlite_models.close_pooled_connections()
+
+    conn = sqlite_models.get_connection(db_path)
+    assert conn.execute(
+        """SELECT name, companion_name, preferred_voice, created_at,
+                  communication_formality, response_length, relationship_boundaries, speak_replies
+           FROM profiles"""
+    ).fetchone() == (
+        "Ada",
+        "Ember",
+        "male",
+        "2026-01-01T00:00:00+00:00",
+        "casual",
+        "balanced",
+        "normal",
+        1,
+    )
+    assert conn.execute("SELECT user_id FROM active_profile WHERE id = 1").fetchone() is not None
+    conn.close()
+
+
+def test_unreadable_legacy_profile_table_still_opens_the_database(db_path):
+    """`profile` present but not the table the migration expects (no id, so
+    its WHERE clause raises). Losing the copy is acceptable; refusing to
+    open profile.db is not."""
+    raw = _raw_connection(db_path)
+    raw.execute("CREATE TABLE profile (name TEXT)")
+    raw.execute("INSERT INTO profile (name) VALUES ('Ada')")
+    raw.commit()
+    raw.close()
+    sqlite_models.close_pooled_connections()
+
+    conn = sqlite_models.get_connection(db_path)
+    assert _count_profiles(conn) == 0
+    conn.close()
+
+
+def test_fresh_install_does_not_create_the_legacy_table(db_path):
+    """It was created unconditionally, so every new install carried an empty
+    `profile` table and entered the migration path it exists to gate."""
+    conn = sqlite_models.get_connection(db_path)
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "profiles" in tables
+    assert "profile" not in tables
+    conn.close()
+
+
 def test_new_installs_get_a_real_sqlcipher_raw_key():
     keyring.delete_password(crypto.SERVICE_NAME, crypto.SQLCIPHER_KEY_ACCOUNT)
     try:

@@ -10,6 +10,12 @@ export interface Turn {
   turnDbId: number;
   /** Smallest chat_history row id in this paired turn — used for pagination. */
   oldestRowId?: number;
+  /** Sent, still waiting on the companion's reply. */
+  pending?: boolean;
+  /** Shown in place of a reply when the turn could not complete. */
+  error?: string;
+  /** Reply arrived as text because speech synthesis failed. */
+  voiceFailed?: boolean;
 }
 
 interface ChatHistoryRow {
@@ -29,6 +35,7 @@ interface TurnMeta {
   sample_rate: number;
   turn_db_id: number;
   has_audio: boolean;
+  voice_failed?: boolean;
 }
 
 interface UseCompanionSocketResult {
@@ -118,6 +125,7 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
 
   const wsRef = useRef<WebSocket | null>(null);
   const pendingMetaRef = useRef<TurnMeta | null>(null);
+  const pendingTurnIdRef = useRef<string | null>(null);
   const playbackCtxRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number | null>(null);
   const attemptRef = useRef(0);
@@ -127,18 +135,69 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
 
   const turns = [...historyTurns, ...liveTurns];
 
-  const addTurn = useCallback((meta: TurnMeta) => {
+  /** Place the turn in the log the moment it is sent. Waiting for a
+   * successful reply meant any backend failure erased the message with
+   * nothing to show for it, which is indistinguishable from the app
+   * ignoring the input — the failure mode packaged builds actually hit. */
+  const beginTurn = useCallback((transcript: string) => {
+    const id = crypto.randomUUID();
+    pendingTurnIdRef.current = id;
     setLiveTurns((prev) => [
       ...prev,
-      {
-        id: crypto.randomUUID(),
-        transcript: meta.transcript,
+      { id, transcript, replyText: "", turnDbId: 0, pending: true },
+    ]);
+  }, []);
+
+  /** Rewrite the turn `beginTurn` reserved, or append `fallback` if it is
+   * already gone (a reconnect between send and reply drops the slot). */
+  const settleTurn = useCallback((settle: (turn: Turn) => Turn, fallback: () => Turn) => {
+    const id = pendingTurnIdRef.current;
+    pendingTurnIdRef.current = null;
+    setLiveTurns((prev) => {
+      const index = id === null ? -1 : prev.findIndex((turn) => turn.id === id);
+      if (index === -1) return [...prev, fallback()];
+      const next = [...prev];
+      next[index] = settle(next[index]);
+      return next;
+    });
+  }, []);
+
+  const resolveTurn = useCallback(
+    (meta: TurnMeta) => {
+      const filled = (turn: Turn): Turn => ({
+        ...turn,
+        // Voice turns learn their transcript from STT here; typed turns
+        // already carried it into beginTurn.
+        transcript: meta.transcript || turn.transcript,
         replyText: meta.reply_text,
         turnDbId: meta.turn_db_id,
         oldestRowId: meta.turn_db_id,
-      },
-    ]);
-  }, []);
+        pending: false,
+        error: undefined,
+        voiceFailed: meta.voice_failed === true,
+      });
+      settleTurn(filled, () =>
+        filled({ id: crypto.randomUUID(), transcript: "", replyText: "", turnDbId: 0 }),
+      );
+    },
+    [settleTurn],
+  );
+
+  const failTurn = useCallback(
+    (message: string) => {
+      settleTurn(
+        (turn) => ({ ...turn, pending: false, error: message }),
+        () => ({
+          id: crypto.randomUUID(),
+          transcript: "",
+          replyText: "",
+          turnDbId: 0,
+          error: message,
+        }),
+      );
+    },
+    [settleTurn],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -187,7 +246,7 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
   const playReply = useCallback(
     (meta: TurnMeta, audio: Float32Array) => {
       setIsThinking(false);
-      addTurn(meta);
+      resolveTurn(meta);
 
       if (!audio.length || !meta.sample_rate) return;
 
@@ -233,7 +292,7 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
       }
     },
-    [addTurn],
+    [resolveTurn],
   );
 
   useEffect(() => {
@@ -279,6 +338,9 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
         if (cancelled) return;
         setIsThinking(false);
         pendingMetaRef.current = null;
+        if (pendingTurnIdRef.current !== null) {
+          failTurn("Lost the connection before a reply came back.");
+        }
         setStatus("closed");
         scheduleReconnect();
       };
@@ -299,17 +361,26 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
             return;
           }
           if (meta.type === "error") {
+            const stranded = pendingMetaRef.current;
             pendingMetaRef.current = null;
             setIsThinking(false);
             console.error("[useCompanionSocket] turn error", meta.message);
+            if (stranded) {
+              // The reply itself already arrived — only its audio failed, so
+              // keep the text rather than replacing it with the error.
+              resolveTurn({ ...stranded, voice_failed: true });
+            } else {
+              failTurn(meta.message ?? "Something went wrong on that turn.");
+            }
             return;
           }
-          // Text-only when speak_replies is off. When audio is expected,
-          // wait for the binary frame so the turn appears with voice.
+          // Text-only when speak_replies is off, or when synthesis failed and
+          // the server fell back to text. When audio is expected, wait for the
+          // binary frame so the turn appears with voice.
           if (!meta.has_audio) {
             pendingMetaRef.current = null;
             setIsThinking(false);
-            addTurn(meta);
+            resolveTurn(meta);
             return;
           }
           pendingMetaRef.current = meta;
@@ -340,20 +411,36 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
       void playbackCtxRef.current?.close();
       playbackCtxRef.current = null;
     };
-  }, [url, playReply, addTurn]);
+  }, [url, playReply, resolveTurn, failTurn]);
 
-  const sendUtterance = useCallback((audio: Float32Array) => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
-    setIsThinking(true);
-    const buffer: ArrayBuffer = new Float32Array(audio).buffer as ArrayBuffer;
-    wsRef.current.send(buffer);
-  }, []);
+  // Both senders record the turn first, then check the socket, so a send that
+  // loses a readyState race says so in the log instead of vanishing.
+  const sendUtterance = useCallback(
+    (audio: Float32Array) => {
+      beginTurn("");
+      if (wsRef.current?.readyState !== WebSocket.OPEN) {
+        failTurn("Not connected — that recording wasn't sent.");
+        return;
+      }
+      setIsThinking(true);
+      const buffer: ArrayBuffer = new Float32Array(audio).buffer as ArrayBuffer;
+      wsRef.current.send(buffer);
+    },
+    [beginTurn, failTurn],
+  );
 
-  const sendText = useCallback((text: string) => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
-    setIsThinking(true);
-    wsRef.current.send(JSON.stringify({ type: "text", text }));
-  }, []);
+  const sendText = useCallback(
+    (text: string) => {
+      beginTurn(text);
+      if (wsRef.current?.readyState !== WebSocket.OPEN) {
+        failTurn("Not connected — that message wasn't sent.");
+        return;
+      }
+      setIsThinking(true);
+      wsRef.current.send(JSON.stringify({ type: "text", text }));
+    },
+    [beginTurn, failTurn],
+  );
 
   return {
     status,

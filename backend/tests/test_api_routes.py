@@ -277,3 +277,21 @@ def test_websocket_text_turn(client, profile):
         assert meta["transcript"] == "hi"
         assert "heard: hi" in meta["reply_text"]
         assert meta["has_audio"] is False
+        # Deliberately silent, not a synthesis failure.
+        assert meta["voice_failed"] is False
+
+
+def test_websocket_text_turn_flags_failed_voice(client, profile):
+    """speak_replies on with no audio means synthesis failed. The turn must
+    still reach the client, flagged — dropping it hid the user's own message
+    too, since the transcript only renders turns that arrive."""
+    pipeline = deps.get_pipeline_optional()
+    pipeline.set_profile(profile.model_copy(update={"speak_replies": True}))
+    with client.websocket_connect("/ws") as ws:
+        ws.send_text('{"type": "text", "text": "hi"}')
+        meta = ws.receive_json()
+        assert meta.get("type") != "error"
+        assert meta["transcript"] == "hi"
+        assert "heard: hi" in meta["reply_text"]
+        assert meta["has_audio"] is False
+        assert meta["voice_failed"] is True

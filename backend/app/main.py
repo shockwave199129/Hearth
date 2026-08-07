@@ -20,6 +20,7 @@ from app.api.auth import require_api_token, token_matches
 from app.config import APP_HOST, APP_PORT
 from app.deps import get_pipeline_optional, set_pipeline
 from app.diagnostics.crash_log import install_crash_handlers
+from app.diagnostics.logging_setup import configure_logging
 from app.pipeline import Pipeline
 from app.setup import orchestrator
 
@@ -133,7 +134,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
     if args.uninstall_cleanup:
         from app.setup.data_reset import uninstall_cleanup
 
@@ -149,4 +150,7 @@ if __name__ == "__main__":
     else:
         import uvicorn
 
-        uvicorn.run(app, host=APP_HOST, port=APP_PORT)
+        # log_config=None: uvicorn otherwise installs handlers on its own
+        # loggers and stops them propagating, which would keep its startup
+        # and access lines out of the file configure_logging just opened.
+        uvicorn.run(app, host=APP_HOST, port=APP_PORT, log_config=None)

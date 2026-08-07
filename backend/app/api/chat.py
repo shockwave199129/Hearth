@@ -71,13 +71,15 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     "text": "..."}`) for typed input — both share the same session/memory,
     so a conversation can freely mix voice and text turns. Server replies
     with one text frame (JSON metadata: transcript, reply_text,
-    sample_rate, turn_db_id, has_audio) followed by a binary frame (mono
-    float32 PCM reply audio) only when has_audio is true — skipped
-    entirely when the profile has speak_replies off. When speak_replies is
-    on, audio is synthesized before any reply frame is sent (voice is the
-    product). Short-term memory is scoped to this one connection; long-term
-    memory maintenance runs once, silently, when it ends — see
-    docs/project-plan.md §5.
+    sample_rate, turn_db_id, has_audio, voice_failed) followed by a binary
+    frame (mono float32 PCM reply audio) only when has_audio is true —
+    skipped entirely when the profile has speak_replies off. Audio is
+    synthesized before any reply frame is sent, since voice is the product;
+    when speak_replies is on but synthesis failed anyway, the turn is still
+    delivered as text with voice_failed set, rather than dropped (see
+    Pipeline._synthesize_reply). Short-term memory is scoped to this one
+    connection; long-term memory maintenance runs once, silently, when it
+    ends — see docs/project-plan.md §5.
 
     The local API token travels as a `?token=` query parameter here rather
     than the header the HTTP routes use: the browser WebSocket constructor
@@ -112,25 +114,13 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                     json.dumps(
                         {
                             "type": "error",
-                            "message": "I couldn't speak that reply — please try again.",
+                            "message": "Something went wrong on that turn — please try again.",
                         }
                     )
                 )
                 continue
 
             has_audio = reply_audio is not None
-            if pipeline.profile.speak_replies and not has_audio:
-                # speak_replies on must never deliver text-only companion turns.
-                await ws.send_text(
-                    json.dumps(
-                        {
-                            "type": "error",
-                            "message": "I couldn't speak that reply — please try again.",
-                        }
-                    )
-                )
-                continue
-
             await ws.send_text(
                 json.dumps(
                     {
@@ -139,6 +129,10 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         "sample_rate": sample_rate,
                         "turn_db_id": turn_db_id,
                         "has_audio": has_audio,
+                        # speak_replies on with no audio means synthesis failed
+                        # and this turn is text-only; the client says so next
+                        # to the reply instead of the reply going missing.
+                        "voice_failed": bool(pipeline.profile.speak_replies) and not has_audio,
                     }
                 )
             )

@@ -112,7 +112,15 @@ export function TranscriptLog({
           {turn.transcript ? (
             <p className="transcript-turn__line transcript-turn__line--user">{turn.transcript}</p>
           ) : null}
-          {turn.replyText ? (
+          {turn.error ? (
+            <p className="transcript-turn__line transcript-turn__failed" role="alert">
+              {turn.error}
+            </p>
+          ) : turn.pending ? (
+            <p className="transcript-turn__line transcript-turn__waiting" aria-live="polite">
+              {companionName} is thinking…
+            </p>
+          ) : turn.replyText ? (
             <p className="transcript-turn__line transcript-turn__line--companion">
               <span className="transcript-turn__speaker">{companionName}</span>
               {turn.replyText}
@@ -126,6 +134,11 @@ export function TranscriptLog({
                 >
                   {playingId === turn.turnDbId ? "…" : "🔊"}
                 </button>
+              )}
+              {turn.voiceFailed && (
+                <span className="transcript-turn__voice-failed">
+                  Couldn't speak this one aloud.
+                </span>
               )}
             </p>
           ) : null}

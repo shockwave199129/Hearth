@@ -62,7 +62,7 @@ fn move_macos_app_to_trash() -> Result<(), String> {
 // otherwise pop up alongside the app. hearth-backend.spec deliberately
 // keeps console=True rather than console=False - PyInstaller sets
 // sys.stdout/sys.stderr to None for a console=False (windowed) exe on
-// Windows, and this backend calls logging.basicConfig() (main.py) and
+// Windows, and this backend calls configure_logging() (main.py) and
 // uvicorn.run() (both write to stderr/stdout unconditionally), which
 // would crash the instant either logs anything. Hiding the window here
 // instead — via the CREATE_NO_WINDOW flag on the spawned process — keeps

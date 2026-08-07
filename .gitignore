@@ -2,6 +2,10 @@
 backend/data/*
 !backend/data/.gitkeep
 
+# Rotating runtime log (app/diagnostics/logging_setup.py). In a dev checkout
+# USER_DATA_DIR is backend/ itself, so this lands in the tree.
+backend/logs/
+
 # Downloaded model weights — see scripts/setup.py.
 backend/models/**/*.gguf
 backend/models/**/*.onnx

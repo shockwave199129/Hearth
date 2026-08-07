@@ -233,6 +233,12 @@ EMBEDDING_SERVER_PORT = 48175
 # on-disk folder, no server process of its own. See db/chroma_client.py.
 VECTOR_STORE_DIR = DATA_DIR / "vector_store"
 
+# Rotating stderr mirror (see app/diagnostics/logging_setup.py). The desktop
+# shell spawns this process with its console hidden and its stdio not
+# redirected, so without a file on disk nothing survives a packaged run —
+# including handled failures, which crash-logs below never capture.
+LOGS_DIR = USER_DATA_DIR / "logs"
+
 # Opt-in crash reports land here until the user chooses Send or Dismiss
 # (see app/diagnostics/crash_log.py). Never uploaded automatically.
 CRASH_LOGS_DIR = USER_DATA_DIR / "crash-logs"

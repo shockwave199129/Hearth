@@ -4,9 +4,13 @@ Multi-profile: each local install can hold several named profiles
 (`active_profile`) — this is still a single-process desktop app (one
 conversation at a time), not concurrent multi-tenant serving; switching
 profiles is a deliberate user action. See docs/project-plan.md §1/§4."""
+import logging
 import threading
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger("hearth")
 
 PROFILES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS profiles (
@@ -120,39 +124,43 @@ CREATE TABLE IF NOT EXISTS chat_history (
 );
 """
 
-# --- Legacy schema, pre-multi-profile (Phases 1-5) — kept only so
-# _migrate_legacy_singleton_profile can read out of it once. Never written
-# to again; not dropped, so the migration is reversible / inspectable.
-_LEGACY_PROFILE_SCHEMA = """
-CREATE TABLE IF NOT EXISTS profile (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    name TEXT NOT NULL,
-    age_range TEXT,
-    gender TEXT,
-    profession TEXT,
-    stressors TEXT NOT NULL,
-    preferred_voice TEXT NOT NULL,
-    companion_name TEXT NOT NULL,
-    communication_formality TEXT NOT NULL DEFAULT 'casual',
-    response_length TEXT NOT NULL DEFAULT 'balanced',
-    relationship_general_trust REAL NOT NULL DEFAULT 0.0,
-    relationship_vulnerability_trust REAL NOT NULL DEFAULT 0.0,
-    relationship_advice_trust REAL NOT NULL DEFAULT 0.0,
-    relationship_consistency_confidence REAL NOT NULL DEFAULT 0.0,
-    relationship_boundaries TEXT NOT NULL DEFAULT 'normal',
-    relationship_life_model TEXT NOT NULL DEFAULT 'unknown',
-    communication_traits_json TEXT NOT NULL DEFAULT '{}',
-    skill_affinity_json TEXT NOT NULL DEFAULT '{}',
-    evaluation_last_run_at TEXT,
-    created_at TEXT NOT NULL
-);
-"""
-
-_LEGACY_PROFILE_SAFETY_COLUMNS = {
-    "emergency_contact_consent": "INTEGER NOT NULL DEFAULT 0",
-    "emergency_contact_name": "TEXT",
-    "emergency_contact_method": "TEXT",
-    "emergency_contact_value": "TEXT",
+# --- Legacy single-row `profile` table, pre-multi-profile (Phases 1-5).
+# Only ever read, by _migrate_legacy_singleton_profile, and never created
+# here: installs that have one made it under an older build, and its shape
+# varies by how old that build was — the table gained columns over Phases
+# 1-5, and CREATE TABLE IF NOT EXISTS silently leaves an existing one
+# alone. So this maps each field the migration wants onto the value to use
+# when the file on disk predates it, and the migration reads only the
+# columns actually present. Naming them all in one SELECT instead raised
+# `no such column: communication_formality` on any older file — and since
+# init_schema propagates out of get_connection, that made every database
+# open fail, not just the migration.
+_LEGACY_PROFILE_FIELDS: dict[str, object] = {
+    "name": "friend",
+    "age_range": None,
+    "gender": None,
+    "profession": None,
+    "stressors": "[]",
+    "preferred_voice": "female",
+    "companion_name": "Companion",
+    "communication_formality": "casual",
+    "response_length": "balanced",
+    "relationship_general_trust": 0.0,
+    "relationship_vulnerability_trust": 0.0,
+    "relationship_advice_trust": 0.0,
+    "relationship_consistency_confidence": 0.0,
+    "relationship_boundaries": "normal",
+    "relationship_life_model": "unknown",
+    "communication_traits_json": "{}",
+    "skill_affinity_json": "{}",
+    "evaluation_last_run_at": None,
+    "emergency_contact_consent": 0,
+    "emergency_contact_name": None,
+    "emergency_contact_method": None,
+    "emergency_contact_value": None,
+    # NOT NULL on `profiles`; filled with the migration time if the legacy
+    # row somehow has no created_at of its own.
+    "created_at": None,
 }
 
 
@@ -190,36 +198,37 @@ def _migrate_legacy_singleton_profile(conn) -> None:
     `profile` table (Phases 1-5, before multi-profile support) and no
     profile has been migrated into `profiles` yet, copy it over under a
     freshly generated user_id and mark it active. Leaves the legacy table
-    in place untouched — this only ever reads from it."""
+    in place untouched — this only ever reads from it.
+
+    Reads whichever of _LEGACY_PROFILE_FIELDS the table actually has and
+    defaults the rest, so a legacy file from any point in Phases 1-5
+    migrates rather than raising on the first column its build predates."""
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if "profile" not in tables:
         return
     already_migrated = conn.execute("SELECT COUNT(*) FROM profiles").fetchone()[0]
     if already_migrated:
         return
-    _ensure_columns(conn, "profile", _LEGACY_PROFILE_SAFETY_COLUMNS)
-    old = conn.execute(
-        """SELECT name, age_range, gender, profession, stressors, preferred_voice, companion_name,
-                  communication_formality, response_length, relationship_general_trust, relationship_vulnerability_trust,
-                  relationship_advice_trust, relationship_consistency_confidence, relationship_boundaries, relationship_life_model,
-                  communication_traits_json, skill_affinity_json, evaluation_last_run_at,
-                  emergency_contact_consent, emergency_contact_name, emergency_contact_method,
-                  emergency_contact_value, created_at
-           FROM profile WHERE id = 1"""
-    ).fetchone()
+    present = {row[1] for row in conn.execute("PRAGMA table_info(profile)")}
+    readable = [name for name in _LEGACY_PROFILE_FIELDS if name in present]
+    if not readable:
+        return
+    old = conn.execute(f"SELECT {', '.join(readable)} FROM profile WHERE id = 1").fetchone()
     if old is None:
         return
+
+    values = dict(_LEGACY_PROFILE_FIELDS)
+    values.update(zip(readable, old))
+    if not values["created_at"]:
+        values["created_at"] = datetime.now(timezone.utc).isoformat()
+
+    columns = list(_LEGACY_PROFILE_FIELDS)
+    placeholders = ", ".join("?" * len(columns))
     user_id = str(uuid.uuid4())
     conn.execute(
-        """INSERT INTO profiles (user_id, name, age_range, gender, profession, stressors,
-               preferred_voice, companion_name, communication_formality, response_length,
-               relationship_general_trust, relationship_vulnerability_trust, relationship_advice_trust,
-               relationship_consistency_confidence, relationship_boundaries, relationship_life_model,
-               communication_traits_json, skill_affinity_json, evaluation_last_run_at,
-               speak_replies, emergency_contact_consent,
-               emergency_contact_name, emergency_contact_method, emergency_contact_value, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)""",
-        (user_id, *old),
+        f"""INSERT INTO profiles (user_id, speak_replies, {', '.join(columns)})
+            VALUES (?, 1, {placeholders})""",
+        (user_id, *(values[name] for name in columns)),
     )
     conn.execute(
         """INSERT INTO active_profile (id, user_id) VALUES (1, ?)
@@ -234,7 +243,6 @@ def init_schema(conn) -> None:
     `PRAGMA table_info` probe and a `sqlite_master` scan, so it runs once
     per database file per process (see `get_connection`) rather than on
     every open."""
-    conn.execute(_LEGACY_PROFILE_SCHEMA)
     conn.execute(PROFILES_SCHEMA)
     conn.execute(ACTIVE_PROFILE_SCHEMA)
     conn.execute(SETUP_STATE_SCHEMA)
@@ -245,7 +253,19 @@ def init_schema(conn) -> None:
     conn.execute(RELATIONSHIP_PROFILES_SCHEMA)
     _ensure_columns(conn, "profiles", _PROFILES_TEXT_INPUT_COLUMNS)
     conn.commit()
-    _migrate_legacy_singleton_profile(conn)
+    try:
+        _migrate_legacy_singleton_profile(conn)
+    except Exception:
+        # Copying a pre-multi-profile row across is never worth failing a
+        # launch for. init_schema propagates out of get_connection, so a
+        # raise here leaves every store unable to open profile.db at all —
+        # the app won't boot, and retries hit the same row forever. Log it
+        # and move on; onboarding can still create a fresh profile.
+        logger.exception("legacy profile migration failed — continuing without it")
+        try:
+            conn.rollback()
+        except Exception:
+            logger.exception("rollback after failed legacy profile migration also failed")
 
 
 class PooledConnection:

@@ -149,10 +149,19 @@ class Pipeline:
         see docs/project-plan.md's text-input support notes."""
         return self._handle_turn(text, memory)
 
-    def _synthesize_required(self, reply_text: str) -> tuple[np.ndarray, int]:
-        """Voice is the product — synthesize with one retry, then raise.
-        Never return a text-only companion turn when speak_replies is on."""
-        last_exc: Exception | None = None
+    def _synthesize_reply(self, reply_text: str) -> tuple[np.ndarray | None, int]:
+        """Synthesize with one retry, then give up and let the turn continue
+        as text — callers pass the None straight through to the client.
+
+        Voice is the product, so reaching the None here is a real defect and
+        it logs a traceback saying so. What it must not do is discard the
+        turn: this used to raise, the websocket turned that into an error
+        frame, and the client — which only renders a turn once one arrives —
+        showed neither the reply nor the user's own message. A TTS failure
+        read as the app ignoring input entirely. Degrading to text keeps the
+        conversation legible and keeps the failure visible instead of
+        swallowing both.
+        """
         for attempt in range(2):
             try:
                 reply_audio = self.tts.synthesize(
@@ -164,10 +173,10 @@ class Pipeline:
                 if pcm.size == 0:
                     raise RuntimeError("TTS returned empty audio")
                 return pcm, self.tts.sample_rate
-            except Exception as exc:
-                last_exc = exc
+            except Exception:
                 logger.exception("TTS attempt %s failed", attempt + 1)
-        raise RuntimeError("TTS failed after retries") from last_exc
+        logger.error("TTS failed after retries — delivering %r as text only", reply_text[:80])
+        return None, 0
 
     def _commit_turn(
         self, memory: ShortTermMemory, transcript: str, reply_text: str
@@ -335,12 +344,9 @@ class Pipeline:
         self._maybe_mark_checkin(reply_text)
         self._update_relationship_snapshot(transcript, reply_text)
         self._append_learning_observations(transcript, reply_text)
-        if not self.profile.speak_replies:
-            turn_db_id = self._commit_turn(memory, transcript, reply_text)
-            return transcript, reply_text, None, 0, turn_db_id
-        # Synthesize before committing history so a failed voice turn does not
-        # leave a text-only reply that only shows up after restart.
-        reply_audio, sample_rate = self._synthesize_required(reply_text)
+        reply_audio, sample_rate = (
+            self._synthesize_reply(reply_text) if self.profile.speak_replies else (None, 0)
+        )
         turn_db_id = self._commit_turn(memory, transcript, reply_text)
         return transcript, reply_text, reply_audio, sample_rate, turn_db_id
 
@@ -419,7 +425,7 @@ class Pipeline:
         except Exception:
             logger.exception("failed to dual-write safety findings to evaluation log")
         self._update_relationship_snapshot(transcript, reply_text)
-        reply_audio, sample_rate = self._synthesize_required(reply_text)
+        reply_audio, sample_rate = self._synthesize_reply(reply_text)
         turn_db_id = self._commit_turn(memory, transcript, reply_text)
         return transcript, reply_text, reply_audio, sample_rate, turn_db_id
 
