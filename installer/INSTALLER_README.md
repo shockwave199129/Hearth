@@ -58,10 +58,10 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 2. Build:
 ```bash
 # Using PowerShell
-.\desktop\installer\scripts\build-windows.ps1
+.\installer\scripts\build-windows.ps1
 
 # Or Bash (Git Bash/WSL)
-bash ./desktop/installer/scripts/build-windows.sh
+bash ./installer/scripts/build-windows.sh
 ```
 
 3. Output: `Hearth-0.2.6-installer.exe`
@@ -79,7 +79,7 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
 2. Build:
 ```bash
-bash ./desktop/installer/scripts/build-macos.sh
+bash ./installer/scripts/build-macos.sh
 ```
 
 3. Output: `Hearth-0.2.6.dmg`
@@ -101,7 +101,7 @@ sudo dnf install gcc openssl-devel fontconfig-devel rpm-build
 
 3. Build:
 ```bash
-bash ./desktop/installer/scripts/build-linux.sh
+bash ./installer/scripts/build-linux.sh
 ```
 
 4. Output: `hearth_0.2.6_amd64.deb`, `hearth-0.2.6-1.x86_64.rpm`
@@ -169,7 +169,7 @@ bash ./desktop/installer/scripts/build-linux.sh
 ### Run Installer UI in Dev Mode
 
 ```bash
-cd desktop/installer-ui
+cd installer-ui
 pnpm install
 pnpm run dev
 ```
@@ -179,14 +179,14 @@ Access at: `http://localhost:5174`
 ### Build Installer App (Dev)
 
 ```bash
-cd desktop/installer
+cd installer
 cargo build
 ```
 
 ### Run Tauri Dev Mode
 
 ```bash
-cd desktop/installer
+cd installer
 CARGO_MANIFEST_DIR=. cargo tauri dev
 ```
 
@@ -194,7 +194,7 @@ CARGO_MANIFEST_DIR=. cargo tauri dev
 
 ### Change Installer Colors
 
-Edit `desktop/installer-ui/src/App.css`:
+Edit `installer-ui/src/App.css`:
 ```css
 .installer-app {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -203,7 +203,7 @@ Edit `desktop/installer-ui/src/App.css`:
 
 ### Change Default Install Path
 
-Edit `desktop/installer/src/installer.rs`:
+Edit `installer/src/installer.rs`:
 ```rust
 pub fn get_default_install_path() -> PathBuf {
     // Windows
@@ -217,9 +217,9 @@ pub fn get_default_install_path() -> PathBuf {
 
 ### Add Custom Steps
 
-1. Add new page component in `desktop/installer-ui/src/pages/`
-2. Add step enum in `desktop/installer-ui/src/App.tsx`
-3. Add backend command in `desktop/installer/src/main.rs`
+1. Add new page component in `installer-ui/src/pages/`
+2. Add step enum in `installer-ui/src/App.tsx`
+3. Add backend command in `installer/src/main.rs`
 
 ## Troubleshooting
 

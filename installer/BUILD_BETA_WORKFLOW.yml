@@ -49,20 +49,20 @@ jobs:
       
       - name: Build installer UI
         run: |
-          cd desktop\installer-ui
+          cd installer-ui
           pnpm install
           pnpm run build
         shell: cmd
       
       - name: Build Rust backend
         run: |
-          cd desktop\installer
+          cd installer
           cargo build --release
         shell: cmd
       
       - name: Create NSIS installer
         run: |
-          cd desktop\installer
+          cd installer
           $env:VERSION = "${{ env.VERSION }}"
           & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=$env:VERSION /V4 nsis\installer.nsi
         shell: powershell
@@ -71,7 +71,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hearth-windows-installer
-          path: 'desktop/installer/Hearth-*-installer.exe'
+          path: 'installer/Hearth-*-installer.exe'
           retention-days: 7
 
   build-macos:
@@ -110,18 +110,18 @@ jobs:
       
       - name: Build installer UI
         run: |
-          cd desktop/installer-ui
+          cd installer-ui
           pnpm install
           pnpm run build
       
       - name: Build Rust backend
         run: |
-          cd desktop/installer
+          cd installer
           cargo build --release --target ${{ matrix.target }}
       
       - name: Create DMG
         run: |
-          cd desktop/installer
+          cd installer
           TEMP_DMG="Hearth-${{ env.VERSION }}-${{ matrix.target }}-temp.dmg"
           FINAL_DMG="Hearth-${{ env.VERSION }}-${{ matrix.target }}.dmg"
           
@@ -134,7 +134,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hearth-macos-installer-${{ matrix.target }}
-          path: 'desktop/installer/Hearth-*.dmg'
+          path: 'installer/Hearth-*.dmg'
           retention-days: 7
 
   build-linux:
@@ -174,18 +174,18 @@ jobs:
       
       - name: Build installer UI
         run: |
-          cd desktop/installer-ui
+          cd installer-ui
           pnpm install
           pnpm run build
       
       - name: Build Rust backend
         run: |
-          cd desktop/installer
+          cd installer
           cargo build --release
       
       - name: Create DEB package
         run: |
-          cd desktop/installer
+          cd installer
           VERSION="${{ env.VERSION }}"
           DEB_DIR="hearth_${VERSION}_amd64"
           mkdir -p "$DEB_DIR/usr/bin"
@@ -215,7 +215,7 @@ jobs:
       
       - name: Create RPM package
         run: |
-          cd desktop/installer
+          cd installer
           VERSION="${{ env.VERSION }}"
           
           cat > hearth.spec << EOF
@@ -253,7 +253,7 @@ jobs:
         with:
           name: hearth-linux-installers
           path: |
-            desktop/installer/*.deb
+            installer/*.deb
             $HOME/rpmbuild/RPMS/x86_64/*.rpm
           retention-days: 7
 

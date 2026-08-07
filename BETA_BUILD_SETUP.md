@@ -10,10 +10,10 @@ After merging this PR to `main`, copy the workflow file to the correct location:
 
 ```bash
 # From repo root
-cp desktop/installer/BUILD_BETA_WORKFLOW.yml .github/workflows/build-beta.yml
+cp installer/BUILD_BETA_WORKFLOW.yml .github/workflows/build-beta.yml
 ```
 
-Or manually create `.github/workflows/build-beta.yml` with the contents from `desktop/installer/BUILD_BETA_WORKFLOW.yml`.
+Or manually create `.github/workflows/build-beta.yml` with the contents from `installer/BUILD_BETA_WORKFLOW.yml`.
 
 ### 2. Trigger a Beta Build
 

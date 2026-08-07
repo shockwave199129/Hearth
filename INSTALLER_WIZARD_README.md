@@ -87,7 +87,7 @@ Download Installer
 ## Files Added
 
 ```
-desktop/
+<repo root>/
 ├── installer/              # NEW: Tauri app for installer
 │   ├── src/
 │   │   ├── main.rs
@@ -117,21 +117,21 @@ desktop/
 
 ### Quick Start (macOS)
 ```bash
-cd desktop/installer/scripts
+cd installer/scripts
 bash ./build-macos.sh
 # Output: Hearth-0.2.6.dmg
 ```
 
 ### Quick Start (Windows)
 ```powershell
-cd desktop/installer/scripts
+cd installer/scripts
 .\build-windows.ps1
 # Output: Hearth-0.2.6-installer.exe
 ```
 
 ### Quick Start (Linux)
 ```bash
-cd desktop/installer/scripts
+cd installer/scripts
 bash ./build-linux.sh
 # Output: hearth_0.2.6_amd64.deb, hearth-0.2.6-1.x86_64.rpm
 ```
@@ -185,19 +185,19 @@ The installer wizard is **separate from the in-app setup flow**:
 
 ### Run in Dev Mode
 ```bash
-cd desktop/installer-ui
+cd installer-ui
 pnpm install
 pnpm run dev
 
 # In another terminal
-cd desktop/installer
+cd installer
 cargo tauri dev
 ```
 
 ### Testing Hardware Detection
 ```rust
 // Test in Rust
-cd desktop/installer
+cd installer
 cargo test
 
 // Or run directly
@@ -215,4 +215,4 @@ echo '{}' | cargo run -- detect_system_info
 
 ## Questions?
 
-See `desktop/installer/INSTALLER_README.md` for detailed documentation.
+See `installer/INSTALLER_README.md` for detailed documentation.

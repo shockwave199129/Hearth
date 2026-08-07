@@ -167,11 +167,23 @@ jobs:
       #   Windows: WINDOWS_CERTIFICATE (base64 .pfx), WINDOWS_CERTIFICATE_PASSWORD
       #   Updater (optional): TAURI_SIGNING_PRIVATE_KEY,
       #                       TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+      #
+      # The Apple credentials reach the build through $GITHUB_ENV rather than
+      # an `env:` block on the build step. An unset secret still defines the
+      # variable as an empty string, and every signing check in the bundler
+      # asks whether the variable exists (`var_os`), never whether it holds
+      # anything — so an empty APPLE_CERTIFICATE made Tauri run `security
+      # import` against a zero-byte .p12 and fail the entire bundle instead
+      # of falling back to unsigned. $GITHUB_ENV only defines what we write.
       - name: Import Apple Developer certificate
         if: startsWith(matrix.platform, 'macos')
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           KEYCHAIN_PASSWORD: hearth-ci-temp
         run: |
           if [ -z "${APPLE_CERTIFICATE:-}" ]; then
@@ -189,6 +201,16 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s \
             -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          # The certificate is in the keychain now, so the bundler only needs
+          # the identity to look it up; forwarding APPLE_CERTIFICATE as well
+          # would just make it repeat the import. Notarization is skipped
+          # unless all three of its variables are present, so export each one
+          # only when it actually has a value.
+          for var in APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -n "${!var}" ]; then
+              echo "$var=${!var}" >> "$GITHUB_ENV"
+            fi
+          done
 
       - name: Import Windows code-signing certificate
         if: startsWith(matrix.platform, 'windows')
@@ -207,22 +229,24 @@ jobs:
             -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force)
           echo "WINDOWS_CERTIFICATE_PATH=$pfx" >> $env:GITHUB_ENV
 
+      # Same presence-not-emptiness rule as the Apple credentials above: an
+      # empty updater key would be treated as a real one.
+      - name: Configure updater signing key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          for var in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+            if [ -n "${!var}" ]; then
+              echo "$var=${!var}" >> "$GITHUB_ENV"
+            fi
+          done
+
       - name: Build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Populated from repo secrets when present; empty values leave the
-          # build unsigned. Tauri/macos-notarization reads these directly.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: desktop
           tagName: ${{ github.ref_name }}
