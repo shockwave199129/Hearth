@@ -40,7 +40,7 @@ permissions:
 # because that's the version actually verified working end-to-end (see
 # requirements-common.txt) — not worth the risk of un-verifying that for
 # Intel Mac support. Windows/Linux ARM64 (windows-11-arm,
-# ubuntu-24.04-arm) hit no equivalent dependency gap and remain in the
+# ubuntu-22.04-arm) hit no equivalent dependency gap and remain in the
 # matrix; they're also standard (free) runners, unlike macOS Intel would
 # have been (GitHub only offers Intel macOS as an always-paid "-large"
 # tier as of macOS 14+, confirmed via GitHub's own billing docs) — moot

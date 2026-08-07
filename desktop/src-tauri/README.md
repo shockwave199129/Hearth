@@ -167,6 +167,24 @@ hit SmartScreen; on the build machine use More info → Run anyway.
 `appimage`. Each OS only builds the subset of that list that applies to it,
 so this one config covers all three platforms without per-OS forks.
 
+### Uninstall and local data
+
+Hearth retains profile identity and preferences on a reinstall, but removes
+models, first-run Python packages, conversations, vector memory, learning
+data, and pending crash logs. The NSIS uninstaller on Windows and `.deb` /
+`.rpm` package removal on Ubuntu/Linux run this cleanup before removing the
+app. The Windows MSI does not have an uninstall hook; use **Settings → Reset
+local data** first.
+
+macOS has no uninstall event when an app is dragged to Trash. Use
+**Settings → Uninstall Hearth…** to clean local data and move the app to
+Trash. If the app has already been deleted, download the script from the
+release source, mount a Hearth DMG, and run:
+
+```bash
+scripts/uninstall-macos.sh --app /path/to/Hearth.app
+```
+
 ## Building all three installers — Linux (deb/rpm), Windows (msi/nsis), macOS (dmg/app)
 
 Since a single machine can only build its own platform's targets, use

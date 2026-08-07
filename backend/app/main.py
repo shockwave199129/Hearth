@@ -15,7 +15,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import chat, diagnostics, memory, profile, setup, skills, status
+from app.api import chat, data, diagnostics, memory, profile, setup, skills, status
 from app.api.auth import require_api_token, token_matches
 from app.config import APP_HOST, APP_PORT
 from app.deps import get_pipeline_optional, set_pipeline
@@ -62,6 +62,7 @@ app.include_router(memory.router)
 app.include_router(skills.router)
 app.include_router(chat.router)
 app.include_router(diagnostics.router)
+app.include_router(data.router)
 
 
 @app.on_event("startup")
@@ -125,10 +126,25 @@ def run_cli_loop() -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--cli", action="store_true", help="run mic/speaker loop directly, no server")
+    parser.add_argument(
+        "--uninstall-cleanup",
+        action="store_true",
+        help="erase local runtime data while retaining profile identity",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    if args.cli:
+    if args.uninstall_cleanup:
+        from app.setup.data_reset import uninstall_cleanup
+
+        # An uninstaller must still finish deleting the app when cleanup hits
+        # a locked/corrupt local file, so this helper is intentionally
+        # best-effort and its result is informational only.
+        try:
+            uninstall_cleanup()
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Best-effort uninstall cleanup failed")
+    elif args.cli:
         run_cli_loop()
     else:
         import uvicorn

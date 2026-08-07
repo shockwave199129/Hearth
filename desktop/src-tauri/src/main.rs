@@ -24,6 +24,40 @@ use std::os::unix::process::CommandExt as UnixCommandExt;
 
 use tauri::Manager;
 
+/// Move the running macOS bundle to the Trash after the frontend has asked
+/// the backend to retain profile identity and erase all other local data.
+/// macOS has no uninstall event when a user drags a .app to Trash, so this
+/// command is the reliable in-app uninstall route.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn move_macos_app_to_trash() -> Result<(), String> {
+    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+    let app_bundle = executable
+        .ancestors()
+        .find(|path| path.extension().is_some_and(|extension| extension == "app"))
+        .ok_or_else(|| "Hearth is not running from a macOS app bundle.".to_string())?;
+    let path = app_bundle
+        .to_string_lossy()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+    let script = format!("tell application \"Finder\" to delete POSIX file \"{path}\"");
+    let status = Command::new("osascript")
+        .args(["-e", &script])
+        .status()
+        .map_err(|error| format!("couldn't open Finder: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Finder couldn't move Hearth to the Trash.".to_string())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn move_macos_app_to_trash() -> Result<(), String> {
+    Err("In-app uninstall is only available on macOS.".to_string())
+}
+
 // Windows only: prevents the console window hearth-backend.exe would
 // otherwise pop up alongside the app. hearth-backend.spec deliberately
 // keeps console=True rather than console=False - PyInstaller sets
@@ -187,9 +221,8 @@ fn kill_process_tree(child: &mut Child) {
 /// Frontend listens for `backend-spawn-failed` (see useSetupStatus).
 fn notify_backend_spawn_failed(app: &tauri::AppHandle, message: &str) {
     let handle = app.clone();
-    let payload = serde_json::to_string(message).unwrap_or_else(|_| {
-        "\"Couldn't start the companion backend.\"".to_string()
-    });
+    let payload = serde_json::to_string(message)
+        .unwrap_or_else(|_| "\"Couldn't start the companion backend.\"".to_string());
     thread::spawn(move || {
         for _ in 0..50 {
             if let Some(window) = handle.get_webview_window("main") {
@@ -220,6 +253,7 @@ fn main() {
 
     tauri::Builder::default()
         .manage(BackendProcess(Mutex::new(None)))
+        .invoke_handler(tauri::generate_handler![move_macos_app_to_trash])
         .append_invoke_initialization_script(&token_script)
         .setup(move |app| {
             // package_info().version is whatever `tauri build --config` (or

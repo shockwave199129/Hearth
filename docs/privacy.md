@@ -19,6 +19,22 @@ off by default.
 Nothing above is ever synced anywhere. There's no account, no server, no
 telemetry.
 
+## Uninstalling or resetting local data
+
+**Settings → Reset local data** removes downloaded models, Python packages,
+conversation history, memories, learning data, and pending crash reports. It
+keeps only profile identity and preferences (such as your name, companion,
+voice, and emergency-contact settings), so reinstalling Hearth does not make
+you onboard again. Setup downloads the required models and packages again.
+
+The standard Windows NSIS uninstaller and Ubuntu `.deb` / `.rpm` package
+removal do the same automatically. On macOS, use **Settings → Uninstall
+Hearth…** before moving the app to Trash; macOS does not notify an app when
+its `.app` bundle is dragged to Trash. If the app has already been removed,
+download `scripts/uninstall-macos.sh` from the release source, mount a Hearth
+DMG, and run `scripts/uninstall-macos.sh --app
+/path/to/Hearth.app` to perform the profile-preserving cleanup.
+
 ## Multiple profiles
 
 One install can hold several named profiles (Settings → Profiles) — each

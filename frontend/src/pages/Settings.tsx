@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import "./Settings.css";
 import { useTierStatus } from "../hooks/useTierStatus";
 import { useProfile } from "../hooks/useProfile";
@@ -9,6 +10,7 @@ import { SkillsPanel } from "../components/SkillsPanel";
 import { ProfilesPanel } from "../components/ProfilesPanel";
 import { getStoredTheme, setStoredTheme, type Theme } from "../lib/theme";
 import { friendlyActionError } from "../lib/errors";
+import { backendFetch } from "../lib/backendFetch";
 import { useAlert } from "../lib/alerts";
 import * as notifications from "../lib/notifications";
 import {
@@ -38,6 +40,8 @@ export function Settings() {
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(notifications.isEnabledPreference);
+  const [dataResetBusy, setDataResetBusy] = useState(false);
+  const [dataResetError, setDataResetError] = useState<string | null>(null);
 
   const handleThemeChange = (next: Theme) => {
     setTheme(next);
@@ -112,6 +116,52 @@ export function Settings() {
     notifications.setEnabledPreference(next);
     setNotificationsEnabled(next);
     showAlert({ type: "success", message: next ? "Desktop notifications on." : "Desktop notifications off." });
+  };
+
+  const resetLocalData = async () => {
+    if (
+      !window.confirm(
+        "This removes downloaded models, Python packages, conversations, memories, and crash logs. Your profile identity and preferences stay. You'll complete setup again. Continue?",
+      )
+    ) {
+      return;
+    }
+    setDataResetBusy(true);
+    setDataResetError(null);
+    try {
+      const response = await backendFetch("/api/data/reset", { method: "POST" });
+      if (!response.ok) throw new Error(`status ${response.status}`);
+      window.location.reload();
+    } catch (err) {
+      const message = friendlyActionError(err, "Settings.resetLocalData", "Couldn't reset local data.");
+      setDataResetError(message);
+      showAlert({ type: "error", message });
+    } finally {
+      setDataResetBusy(false);
+    }
+  };
+
+  const uninstallMacos = async () => {
+    if (
+      !window.confirm(
+        "This removes downloaded models, Python packages, conversations, memories, and crash logs, then moves Hearth to the Trash. Your profile identity and preferences stay for reinstall. Continue?",
+      )
+    ) {
+      return;
+    }
+    setDataResetBusy(true);
+    setDataResetError(null);
+    try {
+      const response = await backendFetch("/api/data/reset", { method: "POST" });
+      if (!response.ok) throw new Error(`status ${response.status}`);
+      await invoke("move_macos_app_to_trash");
+      window.close();
+    } catch (err) {
+      const message = friendlyActionError(err, "Settings.uninstallMacos", "Couldn't uninstall Hearth.");
+      setDataResetError(message);
+      showAlert({ type: "error", message });
+      setDataResetBusy(false);
+    }
   };
 
   return (
@@ -419,6 +469,25 @@ export function Settings() {
         ) : (
           !safetyError && <p className="settings__hint">Reading safety status…</p>
         )}
+      </section>
+
+      <section className="settings__section settings__section--danger">
+        <h2>Local data</h2>
+        <p className="settings__hint">
+          Reset removes downloaded models, Python packages, conversations, memories, learning data, and
+          crash logs. Your profile identity and preferences remain for reinstall.
+        </p>
+        <div className="settings__actions">
+          <button className="settings__danger-button" onClick={() => void resetLocalData()} disabled={dataResetBusy}>
+            {dataResetBusy ? "Resetting…" : "Reset local data"}
+          </button>
+          {navigator.userAgent.includes("Macintosh") && (
+            <button className="settings__danger-button" onClick={() => void uninstallMacos()} disabled={dataResetBusy}>
+              Uninstall Hearth…
+            </button>
+          )}
+        </div>
+        {dataResetError && <p className="settings__error">{dataResetError}</p>}
       </section>
     </div>
   );

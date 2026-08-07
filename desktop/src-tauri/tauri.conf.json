@@ -38,6 +38,19 @@
       "resources/hearth-backend": "backend",
       "resources/llama-cpp": "llama-cpp",
       "resources/setup-python": "setup-python"
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsh"
+      }
+    },
+    "linux": {
+      "deb": {
+        "preRemoveScript": "./linux/preremove.sh"
+      },
+      "rpm": {
+        "preRemoveScript": "./linux/preremove.sh"
+      }
     }
   }
 }

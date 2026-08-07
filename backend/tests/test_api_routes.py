@@ -153,6 +153,20 @@ def test_status_503_without_pipeline(isolated_db, monkeypatch):
         assert c.get("/api/status").status_code == 503
 
 
+def test_reset_data_stops_pipeline_and_reports_retained_profile(client, monkeypatch):
+    stopped = []
+    pipeline = deps.get_pipeline_optional()
+    monkeypatch.setattr(pipeline, "shutdown", lambda: stopped.append(True))
+    monkeypatch.setattr("app.api.data.reset_local_data", lambda: True)
+
+    response = client.post("/api/data/reset")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "profile_retained": True}
+    assert stopped == [True]
+    assert deps.get_pipeline_optional() is None
+
+
 def test_get_profile_404_when_none_active(client, monkeypatch):
     # profile.py binds get_active_user_id at import time — patch there.
     monkeypatch.setattr("app.api.profile.get_active_user_id", lambda: None)

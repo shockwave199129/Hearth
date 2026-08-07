@@ -240,6 +240,21 @@ CRASH_LOGS_BUCKET_URL = os.environ.get(
     "CRASH_LOGS_BUCKET_URL",
     "https://hearth-sub.s3.ap-south-1.amazonaws.com/hearth_ai/crash-logs",
 )
+
+# An uninstall exports profile identity to the OS-owned retained directory
+# before its install tree disappears. Restore it before any store opens
+# profile.db so a reinstall keeps onboarding/preferences but starts with no
+# conversations, memories, models, or setup-complete flag.
+if getattr(sys, "frozen", False):
+    try:
+        from app.setup.data_reset import restore_retained_profiles_if_needed
+
+        restore_retained_profiles_if_needed(USER_DATA_DIR)
+    except Exception:  # pylint: disable=broad-exception-caught
+        # A corrupt/missing retained DB must never prevent a clean reinstall
+        # from opening; the user can still onboard normally.
+        pass
+
 # Ships in report metadata so a received log can be matched to a build.
 # Resolved from HEARTH_APP_VERSION / baked app/VERSION / nearest v* git tag
 # — see app/version.py. Never hardcode a release number here.
