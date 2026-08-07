@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Privacy / security concern
+    url: https://github.com/shockwave199129/Hearth/security/advisories/new
+    about: Prefer a private advisory for exploit-shaped reports involving local data.

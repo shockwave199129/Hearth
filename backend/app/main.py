@@ -15,14 +15,19 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import chat, memory, profile, setup, skills, status
+from app.api import chat, diagnostics, memory, profile, setup, skills, status
 from app.api.auth import require_api_token, token_matches
 from app.config import APP_HOST, APP_PORT
 from app.deps import get_pipeline_optional, set_pipeline
+from app.diagnostics.crash_log import install_crash_handlers
 from app.pipeline import Pipeline
 from app.setup import orchestrator
 
 logger = logging.getLogger("hearth")
+
+# Process-wide: buffer unhandled Python exceptions to crash-logs/pending
+# so the UI can prompt on the next launch. Never uploads on its own.
+install_crash_handlers()
 
 # Kept for tests that historically patched / called through app.main
 # (test_api_token.py). Prefer app.api.auth.token_matches and app.config.
@@ -56,6 +61,7 @@ app.include_router(profile.router)
 app.include_router(memory.router)
 app.include_router(skills.router)
 app.include_router(chat.router)
+app.include_router(diagnostics.router)
 
 
 @app.on_event("startup")

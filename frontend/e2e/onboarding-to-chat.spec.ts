@@ -83,7 +83,7 @@ async function mockBackend(page: Page) {
       });
     }
     if (path === "/api/memories" && method === "GET") {
-      return route.fulfill({ json: [] });
+      return route.fulfill({ json: { items: [], has_more: false, limit: 50, offset: 0 } });
     }
     if (path === "/api/skills" && method === "GET") {
       return route.fulfill({ json: [] });

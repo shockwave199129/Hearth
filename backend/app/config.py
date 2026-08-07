@@ -231,6 +231,17 @@ EMBEDDING_SERVER_PORT = 48175
 # on-disk folder, no server process of its own. See db/chroma_client.py.
 VECTOR_STORE_DIR = DATA_DIR / "vector_store"
 
+# Opt-in crash reports land here until the user chooses Send or Dismiss
+# (see app/diagnostics/crash_log.py). Never uploaded automatically.
+CRASH_LOGS_DIR = USER_DATA_DIR / "crash-logs"
+CRASH_LOGS_BUCKET_URL = os.environ.get(
+    "CRASH_LOGS_BUCKET_URL",
+    "https://hearth-sub.s3.ap-south-1.amazonaws.com/hearth_ai/crash-logs",
+)
+# Ships in report metadata so a received log can be matched to a build.
+# Overridable for CI / packaged builds that stamp a different version.
+APP_VERSION = os.environ.get("HEARTH_APP_VERSION", "0.3.1")
+
 # Loopback by default (desktop / local venv). Docker sets APP_HOST=0.0.0.0
 # so the published port is reachable from the host / sibling containers.
 APP_HOST = os.environ.get("APP_HOST", "127.0.0.1")

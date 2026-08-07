@@ -158,6 +158,9 @@ still scaffold-only (real app icons).
 
 ## Development notes
 
+- Contributing: see [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, PR
+  expectations, and the same checks CI runs. Issue/PR templates and
+  `CODEOWNERS` live under `.github/`.
 - `scripts/hardware_check.py` — see what tier your machine lands on without
   starting the full app.
 - `backend/app/eval/llm_judge.py` — offline rubric-based regression harness;

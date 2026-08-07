@@ -5,7 +5,17 @@ import "./MemoryPanel.css";
 import { useMemories } from "../hooks/useMemories";
 
 export function MemoryPanel() {
-  const { memories, loading, error, getMemory, updateMemory, deleteMemory } = useMemories();
+  const {
+    memories,
+    loading,
+    loadingMore,
+    hasMore,
+    error,
+    loadMore,
+    getMemory,
+    updateMemory,
+    deleteMemory,
+  } = useMemories();
   const { showAlert } = useAlert();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [draftText, setDraftText] = useState("");
@@ -117,6 +127,16 @@ export function MemoryPanel() {
           </li>
         ))}
       </ul>
+      {hasMore && (
+        <button
+          type="button"
+          className="memory-panel__load-more"
+          onClick={() => void loadMore()}
+          disabled={loadingMore}
+        >
+          {loadingMore ? "Loading…" : "Load more"}
+        </button>
+      )}
     </div>
   );
 }

@@ -55,16 +55,30 @@ def delete(mem_id: str, user_id: str) -> None:
     get_collection().delete(ids=[mem_id])
 
 
-def list_memories(user_id: str, category: str | None = None) -> list[dict]:
-    """id + category + a short label only — never the full text, so a
-    listing call can't accidentally dump everything into context."""
+def list_memories(
+    user_id: str,
+    category: str | None = None,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    """Paginated id + category + short label — never the full text, so a
+    listing call can't accidentally dump everything into context.
+
+    Same shape as ``chat_history.list_turns``: ``{"items", "has_more"}``.
+    ``offset``/``limit`` bound the HTTP response (and the Chroma read) so
+    Settings → Memory stays usable as the store grows for years.
+    """
+    limit = max(1, min(int(limit), 200))
+    offset = max(0, int(offset))
     # chromadb 1.5+ requires a single top-level operator — a bare multi-key
     # dict raises "Expected where to have exactly one operator".
     if category:
         where = {"$and": [{"user_id": user_id}, {"category": category}]}
     else:
         where = {"user_id": user_id}
-    results = get_collection().get(where=where)
+    # Fetch one extra row so has_more is a single round-trip, not a COUNT.
+    results = get_collection().get(where=where, limit=limit + 1, offset=offset)
     # Empty collections often return documents/metadatas as None (not []) —
     # zip(None, ...) would 500 the Settings → Memory panel.
     ids = results.get("ids") or []
@@ -79,7 +93,8 @@ def list_memories(user_id: str, category: str | None = None) -> list[dict]:
         except Exception:
             label = "(unreadable)"
         out.append({"id": mem_id, "category": meta.get("category", ""), "label": label})
-    return out
+    has_more = len(out) > limit
+    return {"items": out[:limit], "has_more": has_more, "limit": limit, "offset": offset}
 
 
 def get(mem_id: str, user_id: str) -> dict | None:

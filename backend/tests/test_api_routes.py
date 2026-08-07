@@ -210,7 +210,15 @@ def test_memories_crud(client, profile, monkeypatch, tmp_path):
     # store's own path knobs if present; otherwise exercise list (empty).
     res = client.get("/api/memories")
     assert res.status_code == 200
-    assert res.json() == []
+    body = res.json()
+    assert body["items"] == []
+    assert body["has_more"] is False
+    assert body["offset"] == 0
+    assert body["limit"] == 50
+
+    page = client.get("/api/memories", params={"limit": 10, "offset": 0})
+    assert page.status_code == 200
+    assert page.json()["limit"] == 10
 
 
 def test_chat_history_empty_then_replay_rejects_missing(client):

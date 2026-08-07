@@ -4,10 +4,12 @@ import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { AlertProvider } from "./lib/alerts";
 import { AlertStack } from "./components/AlertStack";
+import { CrashReportPrompt } from "./components/CrashReportPrompt";
 import { ProfileProvider } from "./lib/ProfileContext";
 import { applyTheme, getStoredTheme } from "./lib/theme";
 import { disableContextMenu } from "./lib/contextMenu";
 import { blockDevtoolsShortcuts } from "./lib/devtools";
+import { installFrontendCrashReporter } from "./lib/crashReporter";
 import "./styles/global.css";
 
 // Applied once, synchronously, before any route renders — the persisted
@@ -20,6 +22,7 @@ applyTheme(getStoredTheme());
 // double-mount. See lib/contextMenu.ts and lib/devtools.ts.
 disableContextMenu();
 blockDevtoolsShortcuts();
+installFrontendCrashReporter();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -32,6 +35,7 @@ createRoot(document.getElementById("root")!).render(
         </ProfileProvider>
       </BrowserRouter>
       <AlertStack />
+      <CrashReportPrompt />
     </AlertProvider>
   </StrictMode>,
 );

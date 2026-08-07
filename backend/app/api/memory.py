@@ -19,9 +19,15 @@ class MemoryUpdateRequest(BaseModel):
 @router.get("/api/memories")
 def api_list_memories(
     category: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
     pipeline: Pipeline = Depends(get_pipeline),
-) -> list[dict]:
-    return long_term.list_memories(pipeline.profile.user_id, category)
+) -> dict:
+    """Paginated memory summaries. Same ``items``/``has_more`` contract as
+    ``GET /api/chat_history`` — see CODE_REVIEW pagination note."""
+    return long_term.list_memories(
+        pipeline.profile.user_id, category, limit=limit, offset=offset
+    )
 
 
 @router.get("/api/memories/{mem_id}")

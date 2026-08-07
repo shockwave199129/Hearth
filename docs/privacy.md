@@ -40,6 +40,17 @@ hasn't been wired in yet; see `backend/app/safety/escalation.py`'s
 docstring. This will be reviewed and clearly re-documented before any real
 outreach capability ships.
 
+### Crash reports (opt-in, only when you say yes)
+
+If Hearth closes unexpectedly, a short diagnostic file is written on this
+device under your local userdata (`crash-logs/`). On the next launch you
+are asked whether to send it. Choosing **Don't send** deletes it. Choosing
+**Send report** uploads that one file over HTTPS to
+`hearth-sub.s3.ap-south-1.amazonaws.com/hearth_ai/crash-logs/` and needs
+an internet connection. The file contains stack traces, app version, and
+OS/hardware class — never conversations, memories, or profile fields.
+Nothing is uploaded unless you confirm.
+
 ## What you can see and delete yourself
 
 Nothing here is "quiet forever" — it's quiet during conversation (the
@@ -58,7 +69,7 @@ and editable if you go look:
 
 ## What we deliberately don't do
 
-- No analytics, no crash reporting to a third party, no update-check
-  ping — this app doesn't know you exist.
+- No analytics, and no automatic crash reporting — a crash log only leaves
+  this device if you confirm the on-launch prompt (see above).
 - No cloud inference — the LLM, STT, and TTS all run on your machine.
 - No plaintext data at rest, anywhere, for any of the categories above.

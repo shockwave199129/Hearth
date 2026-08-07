@@ -1,0 +1,60 @@
+name: Bug report
+description: Something broken or incorrect in Hearth
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please omit personal conversation content,
+        memories, and profile details — paste only what is needed to
+        reproduce (see `docs/privacy.md`).
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong in one or two sentences?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version / commit
+      placeholder: e.g. 0.3.1 or commit sha
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Docker / web only
+        - Unsure
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / crash report excerpt
+      description: Prefer the on-device crash prompt export. Strip any personal text first.
+      render: shell
