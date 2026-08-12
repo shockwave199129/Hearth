@@ -138,61 +138,32 @@ _COLLECT_ALL_PACKAGES = [
     "langgraph",
 ]
 
-# NOTE: The collection of package data is performed after the Analysis
-# step (which defines the `a` object) to avoid referencing `a` before it is
-# created.
-
-# Define the analysis step for PyInstaller. Only positional arguments are
-# provided first, followed by keyword arguments as required by the API.
-a = Analysis(
-    [str(APP_DIR / "main.py")],
-    pathex=[str(BACKEND_DIR)],
-    datas=datas,
-    hiddenimports=hiddenimports,
-    hookspath=[],
-    runtime_hooks=[],
-    excludes=[],
-    noarchive=False,
-    cipher=block_cipher,
-)
-
-# After creating the Analysis object, collect additional package data and
-# binaries for packages that PyInstaller may miss. This must occur after `a`
-# is defined because we extend `a.binaries`.
+# This loop MUST run before Analysis(), not after it: Analysis() consumes
+# `datas`/`hiddenimports` by value in its constructor and builds the import
+# graph there and then, so appending to those lists afterwards is silently
+# ignored. A previous version of this spec collected after Analysis() and
+# only the `a.binaries` mutation took effect (that one edits the already-built
+# TOC), which shipped chromadb's native libraries but none of the submodules
+# it imports dynamically: the installed app died the first time anything
+# touched memory with "ModuleNotFoundError: No module named
+# 'chromadb.telemetry.product.posthog'" (then 'chromadb.api.rust'). Both are
+# resolved through importlib by chromadb's own config.get_class() at runtime,
+# so only collect_all()'s hiddenimports can put them in the bundle.
 #
-# collect_dynamic_libs() (called internally by collect_all(), verified via
-# its actual source — it always returns 2-tuples, never 3) returns
-# (source_path, dest_DIR) — hook-API order, where dest_DIR is a directory
-# (often several files share the same one, e.g. onnxruntime's capi/ has
-# multiple .so/.dylib siblings), not a full file path. That's fine when
-# passed into Analysis()'s own `binaries=`/`datas=` constructor kwargs
-# (its __init__ expands dest_DIR + source's basename into a full file path
-# via format_binaries_and_datas(), while also reversing hook-order into TOC
-# order), which is why `datas` above is left in that same (source, dest)
-# order. But appending directly to the already-constructed `a.binaries`
-# bypasses BOTH of those steps:
-#
-# 1. `a.binaries` is a TOC and expects (dest_name, src_name, typecode), not
-#    hook-order (source, dest) — matching what PyInstaller's own equivalent
-#    internal code (depend.analysis.Analysis.make_hook_binaries_toc) does
-#    for hook-contributed binaries. An earlier version of this loop kept
-#    hook-order when appending — PyInstaller's COLLECT step then checked
-#    os.path.exists() on what it read as src_name (actually the un-reversed
-#    dest fragment, e.g. "torch/lib"), which never exists as a real path,
-#    so it silently dropped every one of these binaries ("Ignoring
-#    non-existent resource torch/lib, meant to be collected as
-#    .../torch/lib/libc10.dylib" in CI logs) — torch/onnxruntime/
-#    moonshine_voice's actual native libraries were never bundled at all.
-# 2. dest_name must be dest_DIR + the source's own basename, not dest_DIR
-#    alone — using dest_DIR alone (as a subsequent fix here did) treats
-#    e.g. "onnxruntime/capi" as a literal target FILENAME rather than a
-#    directory, so every file collect_dynamic_libs placed in that same
-#    directory collides on the exact same dest_name: on Linux this
-#    silently overwrote one file with another (last-one-wins, no error at
-#    all); on macOS CI it failed hard with "Pyinstaller needs to create a
-#    directory at '.../onnxruntime/capi', but there already exists a file
-#    at that path" — both reproduced locally with a minimal PyInstaller
-#    spec before landing this fix.
+# Binaries are kept in collect_dynamic_libs()' hook order — (source_path,
+# dest_DIR), where dest_DIR is a directory that several files routinely share
+# (onnxruntime's capi/ has multiple .so/.dylib siblings) — and handed to
+# Analysis(binaries=...), whose format_binaries_and_datas() joins dest_DIR
+# with each source's basename and reverses the pair into TOC order. Doing
+# that by hand against `a.binaries` is what the post-Analysis version had to
+# do, and both halves of it have already failed here once: hook-order tuples
+# left as-is made COLLECT treat the dest fragment as a source path and drop
+# every binary ("Ignoring non-existent resource torch/lib, meant to be
+# collected as .../torch/lib/libc10.dylib"), and using dest_DIR alone as the
+# dest name made every sibling library in one directory collide — silently
+# overwriting each other on Linux, failing hard on macOS with "there already
+# exists a file at that path".
+binaries = []
 for _pkg in _COLLECT_ALL_PACKAGES:
     _datas, _binaries, _hiddenimports = collect_all(_pkg)
     datas += _datas
@@ -207,14 +178,10 @@ for _pkg in _COLLECT_ALL_PACKAGES:
     # STT engine, failing on first launch with "Failed to load dynlib/dll
     # 'libmoonshine.so' ... Most likely this dynlib/dll was not found when
     # the application was frozen."
-    cleaned_binaries = []
     for source, dest_dir in _binaries:
         if sys.platform == "darwin" and source.endswith("libmoonshine.so"):
             continue
-        source_name = Path(source).name
-        dest_name = f"{dest_dir}/{source_name}" if dest_dir else source_name
-        cleaned_binaries.append((dest_name, source, "BINARY"))
-    a.binaries += cleaned_binaries
+        binaries.append((source, dest_dir))
 
 # moonshine-voice's manylinux wheel vendors its onnxruntime shared lib in a
 # sibling auditwheel dir (moonshine_voice.libs/), not inside the package.
@@ -232,7 +199,7 @@ if sys.platform.startswith("linux"):
     if _moonshine_libs.is_dir():
         for _lib in sorted(_moonshine_libs.iterdir()):
             if _lib.is_file() and ".so" in _lib.name:
-                a.binaries += [(f"moonshine_voice.libs/{_lib.name}", str(_lib), "BINARY")]
+                binaries.append((str(_lib), "moonshine_voice.libs"))
     else:
         raise SystemExit(
             f"moonshine_voice.libs not found at {_moonshine_libs} — "
@@ -240,6 +207,19 @@ if sys.platform.startswith("linux"):
             "(libonnxruntime-*.so.1). Reinstall moonshine-voice from the "
             "manylinux wheel."
         )
+
+a = Analysis(
+    [str(APP_DIR / "main.py")],
+    pathex=[str(BACKEND_DIR)],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+    cipher=block_cipher,
+)
 
 # Build the PYZ archive (pure Python modules) and the executable wrapper.
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
