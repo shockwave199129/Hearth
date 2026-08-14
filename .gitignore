@@ -42,6 +42,8 @@ node_modules/
 project-phases.md
 .claude/
 The Book/
+# derived from The Book/, so it stays local for the same reason the Book does
+THF_implementation_plan.md
 .cursor/
 .codex/
 
