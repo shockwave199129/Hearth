@@ -30,6 +30,40 @@ Design context lives in [`docs/architecture.md`](docs/architecture.md) and
 4. **Comments explain *why*** when the code isn't obvious — match the tone
    already in the repo.
 5. Fill out the PR template (summary + test plan).
+6. **Sign off your commits** (see below).
+
+## Safety-critical code
+
+Anything under `backend/app/safety/` or `backend/app/safety2/` gets extra
+scrutiny regardless of how small the diff looks, because a regression there
+can reach someone in crisis. Expect a slower review, a request for test
+coverage of the specific path you changed, and questions about failure
+modes rather than just correctness. These paths are never labelled
+`good first issue`.
+
+The same applies to changes that widen what leaves the device — see
+[`docs/privacy.md`](docs/privacy.md). Crisis escalation is the only
+outbound path, and it stays explicitly consented.
+
+## Sign-off (DCO)
+
+Hearth uses the [Developer Certificate of Origin](https://developercertificate.org/)
+rather than a CLA: you keep copyright over your contribution, and you
+confirm you have the right to submit it. There's nothing to sign — just add
+a `Signed-off-by` line to each commit:
+
+```bash
+git commit -s -m "your message"
+```
+
+This appends `Signed-off-by: Your Name <your@email.com>` using your git
+`user.name` / `user.email`. Forgot on the last commit?
+`git commit --amend -s --no-edit`. For a whole branch:
+`git rebase --signoff main`.
+
+Why this matters rather than being paperwork: because no single entity
+collects copyright over the codebase, nobody — including the maintainers —
+can later claim sole ownership of it. See [`GOVERNANCE.md`](GOVERNANCE.md).
 
 ## Local checks (same spirit as CI)
 

@@ -10,6 +10,7 @@
 - [ ] Frontend typecheck / unit tests if UI touched (`pnpm typecheck`, `pnpm test`)
 - [ ] Manual check in the app / Docker for user-visible behaviour
 - [ ] Docs updated if behaviour or privacy surface changed
+- [ ] Commits signed off (`git commit -s`) — see [CONTRIBUTING.md](../CONTRIBUTING.md#sign-off-dco)
 
 ## Notes
 <!-- Optional: screenshots, follow-ups, risk. -->
