@@ -18,9 +18,11 @@ from app.checkin.state import get_last_checkin, set_last_checkin
 from app.config import (
     CHECKIN_PROMPT_TEMPLATE,
     CHECKIN_QUESTION_PHRASES,
+    IDENTITY_DISCLOSURE_TEMPLATE,
     SAFETY_RESPONSE_TEXT,
     DATA_DIR,
 )
+from app import identity
 from app.eval.self_check import flag_reply
 from app.hardware.tier_manager import detect_and_cache_tier
 from app.llm.server_manager import LlmServer
@@ -48,7 +50,24 @@ logger = logging.getLogger("hearth")
 
 # Appended to the system prompt for exactly one regeneration attempt when
 # eval/self_check.py flags a reply — see docs/project-plan.md §7.
+#
+# Keyed by flag_reply()'s reason so the retry addresses what actually
+# tripped. Previously a single length/format string was appended no matter
+# which of the eight checks fired, so a reply flagged for "fake empathy
+# claim" was told about lists and clinical language and had no reason to
+# come back different.
 _SELF_CHECK_NUDGE = "\n\nKeep it to 2-3 short spoken sentences, no lists, no clinical or diagnostic language."
+
+_SELF_CHECK_NUDGES: dict[str, str] = {
+    "too long": "\n\nThat was too long. Say the same thing in two short spoken sentences.",
+    "looks like a list": "\n\nDon't use a list — this is spoken aloud. Say it as plain connected sentences.",
+    "clinical/diagnostic language": "\n\nDrop the clinical vocabulary. Say it the way a friend would, in ordinary words.",
+    "overusing questions": "\n\nToo many questions. Ask at most one, and only if it genuinely moves things forward.",
+    "fake empathy claim": "\n\nDon't claim to know exactly how they feel — you don't. Acknowledge what they actually said instead.",
+    "sounds like a generic chatbot": "\n\nThat read like a stock assistant reply. Respond as yourself, to what they specifically said.",
+    "overusing empathy phrases": "\n\nStock empathy phrases are stacking up. Acknowledge them once, concretely, then move on.",
+    "repeating validation phrasing": "\n\nYou've already used that acknowledgment recently. Find a different way in, or skip straight to substance.",
+}
 
 
 def _profile_context_addition(profile: UserProfile) -> str:
@@ -303,6 +322,11 @@ class Pipeline:
         if safety.route != "ordinary":
             return self._respond_to_safety(transcript, safety, memory)
 
+        # Ordered after safety deliberately: someone in crisis who also asks
+        # "are you even real" needs the safety response, not a disclosure.
+        if identity.is_identity_question(transcript):
+            return self._respond_to_identity(transcript, memory)
+
         task = self.scheduler.schedule(transcript, self.mind_state, safety, session_summary=memory.session_summary)
         self.nlp_workers.run(task.workers, transcript, self.mind_state)
         self.scheduler.finalize_communication_state(transcript, self.mind_state)
@@ -380,6 +404,27 @@ class Pipeline:
         if contact:
             return f"If it helps, {top['title']} is available — {contact}."
         return f"If it helps, {top['title']} is available."
+
+    def _respond_to_identity(
+        self, transcript: str, memory: ShortTermMemory
+    ) -> tuple[str, str, np.ndarray | None, int, int]:
+        """Answer "are you real?" from authored text, bypassing the LLM.
+
+        Same shape as _respond_to_safety: what Hearth says about its own
+        nature is not a generation decision (Book Vol 1 Invariant #5), and
+        routing it through the model would put it in front of
+        _apply_self_check, which regenerates away exactly this phrasing.
+        See app/identity.py."""
+        reply_text = IDENTITY_DISCLOSURE_TEMPLATE.format(
+            companion_name=self.profile.companion_name
+        )
+        self.mind_state.last_assistant_message = reply_text
+        self._update_relationship_snapshot(transcript, reply_text)
+        reply_audio, sample_rate = (
+            self._synthesize_reply(reply_text) if self.profile.speak_replies else (None, 0)
+        )
+        turn_db_id = self._commit_turn(memory, transcript, reply_text)
+        return transcript, reply_text, reply_audio, sample_rate, turn_db_id
 
     def _respond_to_safety(
         self, transcript: str, safety, memory: ShortTermMemory
@@ -493,7 +538,8 @@ class Pipeline:
         if reason is None:
             return reply_text
         logger.info("self-check flagged reply (%s) — regenerating once", reason)
-        return self._generate_reply(prompt + _SELF_CHECK_NUDGE, 220)
+        nudge = _SELF_CHECK_NUDGES.get(reason, _SELF_CHECK_NUDGE)
+        return self._generate_reply(prompt + nudge, 220)
 
     @staticmethod
     def _last_exchange(memory: ShortTermMemory) -> tuple[str, str]:

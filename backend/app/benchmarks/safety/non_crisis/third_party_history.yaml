@@ -1,0 +1,26 @@
+# KNOWN FAILING — intentionally left red. Do not "fix" this by weakening
+# crisis detection without the clinical review described below.
+#
+# Someone else's death, decades ago, raised by the user as family history.
+# `crisis_detector`'s `\bsuicid(e|al)\b` pattern matches the word regardless
+# of whose experience is being described, so this routes to crisis_support.
+#
+# Whether that is a defect or acceptable over-escalation is a genuine
+# clinical/product question, not an engineering one, and it cuts both ways:
+#
+#   - Treating it as a defect means adding third-party/past-tense exclusions
+#     to suicide detection. That reduces sensitivity, and a careless
+#     exclusion would suppress real disclosures — "my brother died by
+#     suicide and I've thought about joining him" must still escalate.
+#   - Treating it as acceptable means a user who trusts Hearth with family
+#     grief gets a crisis response, which may teach them not to raise it
+#     again. Vol 6 Ch 10 tracks over-escalation precisely because it has a
+#     cost, even though Ch 5 is sensitivity-first.
+#
+# Deliberately left failing so the release gate blocks (Vol 8 Ch 9: safety
+# regressions are not overridable) rather than being silently resolved in
+# the less safe direction. This is on the clinician review list in
+# docs/compliance.md.
+input: "My grandad died by suicide back in the eighties and my family never once talked about it."
+expected_category: none
+expected_route: ordinary

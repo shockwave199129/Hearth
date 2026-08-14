@@ -42,6 +42,30 @@ has its own memory, history, and check-in state, fully isolated from the
 others. Only one is active at a time. Deleting a profile deletes *all* of
 its data across every table above — never a partial delete.
 
+### The one retention exception: safety records
+
+When a message trips a safety check (signs of crisis or acute distress), a
+separate, minimal record is kept for **up to 30 days**, and it survives
+deleting your memories or your chat history. After 30 days it is deleted
+automatically.
+
+Being precise about what that record is, because it is narrower than it
+sounds: it stores the safety *category*, which internal signals fired, and
+which response the app gave. **It does not store the message, or any part
+of it.** There is no transcript in the safety log.
+
+Why it exists: so a safety response can be checked for quality and improved
+— the failure mode being guarded against is the app mishandling a crisis and
+nobody being able to tell afterwards.
+
+Two limits worth stating plainly:
+
+- **Deleting the whole profile deletes these too, immediately.** The 30-day
+  exception applies to deleting memories or history, not to erasing the
+  profile. A profile deletion is honoured in full.
+- **You can see the count.** Settings → Safety shows how many such records
+  are currently held.
+
 ## The one thing that can leave your device
 
 If, during onboarding, you explicitly opt in and provide an emergency
@@ -50,11 +74,27 @@ consented, and (b) the crisis detector has triggered repeatedly within a
 short window, not just once. A single ambiguous phrase never triggers
 outreach.
 
-**As of today, this is a stub.** No message is actually sent anywhere — the
-app logs what *would* be sent and stops there. A real provider (SMS, email)
-hasn't been wired in yet; see `backend/app/safety/escalation.py`'s
-docstring. This will be reviewed and clearly re-documented before any real
-outreach capability ships.
+**What actually happens today, by contact method:**
+
+- **Email — really sends, but only if this install has been configured to.**
+  Sending needs SMTP credentials supplied through environment variables
+  (`SAFETY_SMTP_HOST`, `SAFETY_SMTP_FROM_ADDRESS`, and optionally
+  username/password). Those are **empty in a normal install**, so a
+  default build sends nothing and logs what it would have sent. If you or
+  whoever deployed your install has set them, a real email goes to your
+  chosen contact over SMTP with STARTTLS.
+- **SMS — does not send.** It logs only. SMS needs a paid third-party
+  provider that hasn't been chosen, so there is deliberately no silent
+  fallback: Hearth never reports having contacted someone it hasn't.
+
+The message itself contains your name, your companion's name, and the fact
+that you opted in — **not** your conversation, memories, or what triggered
+the concern. See `ESCALATION_MESSAGE_TEMPLATE` in
+`backend/app/safety/escalation.py`.
+
+Both conditions still apply in every case: you opted in *and* the crisis
+detector has triggered repeatedly within the window. Neither alone is
+enough.
 
 ### Crash reports (opt-in, only when you say yes)
 

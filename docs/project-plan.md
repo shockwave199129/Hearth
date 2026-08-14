@@ -1,5 +1,12 @@
 # Local Voice Companion — Project Plan
 
+> **Historical document.** This records the original design and its
+> rationale. The product's current positioning has changed — Hearth is no
+> longer described as an "emotional-support" companion, for the reasons in
+> [`compliance.md`](compliance.md). See [`positioning.md`](positioning.md)
+> for current framing. Kept as written; the engineering rationale below is
+> still accurate.
+
 Privacy-first emotional-support voice companion. Runs entirely on the user's
 machine. No data leaves the device except one narrow, consented path: crisis
 escalation.

@@ -1,12 +1,35 @@
 # Hearth
 
-A privacy-first emotional-support voice companion that runs entirely on
-your own machine. No data leaves your device except one narrow, explicitly
-consented path (crisis escalation) — see [`docs/privacy.md`](docs/privacy.md).
+A privacy-first personal AI companion that remembers what matters to you —
+and runs entirely on your own machine. No data leaves your device except
+one narrow, explicitly consented path (crisis escalation) — see
+[`docs/privacy.md`](docs/privacy.md).
 
 ```
 mic → Moonshine (STT) → LFM2.5 via a LangChain agent → Parler-TTS-Tiny-v1/Kokoro (TTS) → speaker
 ```
+
+Most companions forget you between sessions, or remember you on someone
+else's servers. Hearth does neither: it builds a long-term picture of your
+life — what you're working on, who matters to you, what you've been
+carrying — and that picture stays on your disk, encrypted, yours to read,
+correct, or delete.
+
+## What Hearth is — and isn't
+
+Hearth is for reflection, journaling, everyday conversation, remembering
+your goals and experiences, and noticing patterns over time.
+
+Hearth is **not** a therapist, not a medical device, and not a crisis
+service. It does not diagnose, treat, or prevent any condition, and it is
+not a substitute for professional care. When a conversation suggests
+someone is at risk, Hearth's job is to respond safely and point toward
+real human help — not to handle it alone. It is intended for adults
+(18+). See [`docs/compliance.md`](docs/compliance.md) for the reasoning and
+the current gaps.
+
+Emotional support is one capability here, not the product's purpose. That
+distinction is deliberate — see [`docs/positioning.md`](docs/positioning.md).
 
 For the full design history and rationale, see
 [`docs/project-plan.md`](docs/project-plan.md) and [`project-phases.md`](project-phases.md).
@@ -27,7 +50,7 @@ frontend/    React/Vite web app (onboarding, chat, settings)
 desktop/     Tauri wrapper — packages frontend + backend into an installer
 scripts/     hardware_check.py (tier probe), setup.py (manual/dev-only
              model downloads — the packaged app now does this in-app)
-docs/        architecture.md, privacy.md
+docs/        architecture.md, privacy.md, positioning.md, compliance.md
 hearth_ai/   submodule — the from-scratch multi-task NLP model (shared
              encoder + emotion/intent/memory/relationship/strategy heads)
              and its training + ONNX export pipeline. Lives in its own repo
@@ -155,6 +178,35 @@ the app UI (no manual `pip install`/`setup.py` needed for an installed
 app). See [`desktop/src-tauri/README.md`](desktop/src-tauri/README.md) for
 Linux build prerequisites, how that in-app setup flow works, and what's
 still scaffold-only (real app icons).
+
+## Where Hearth is supported
+
+The code runs anywhere its dependencies do. **Supported** means something
+narrower: verified crisis-resource data for that country, and safety
+behaviour tested against it. Shipping a companion into a country whose
+emergency numbers we haven't verified is the one failure mode that isn't
+recoverable, so support is deliberately gated on that.
+
+| Status | Regions |
+|---|---|
+| Resource data present | US, UK — `backend/app/safety2/resources/regions/` |
+| Planned next | Canada, Australia, Ireland, New Zealand |
+| Long-term | Markets with the highest measured need — see below |
+
+First launch targets the **US**: the largest AI-companion market and the
+one whose regulatory expectations we're designing to meet. English-speaking
+high-income markets follow, since they need no model localization — only
+verified regional resource data.
+
+The countries with the *greatest* need are not the first ones we can
+serve. Loneliness runs highest in Brazil, Turkey, and India, and the
+mental-health treatment gap reaches ~75% in low- and middle-income
+countries. Those markets are mobile-first and lower-spec, and Hearth today
+is a desktop app that wants a capable machine and English models. Reaching
+them is a real goal with real prerequisites — mobile, non-English
+STT/TTS/LLM, and verified local resources — not a launch claim.
+[`docs/positioning.md`](docs/positioning.md) has the data and the
+sequencing.
 
 ## Development notes
 

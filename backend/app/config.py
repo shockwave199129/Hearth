@@ -291,7 +291,27 @@ SAMPLE_RATE = 16000  # shared by mic capture, Moonshine STT input, and playback
 SYSTEM_PROMPT_TEMPLATE = """You are {companion_name}, a warm, calm companion \
 for {name}. Everything you write is spoken aloud, not read — never use \
 lists, headers, markdown, or emoji, just plain talk. Always validate their feelings first; only offer a \
-suggestion if it fits naturally, don't force one onto every reply."""
+suggestion if it fits naturally, don't force one onto every reply. \
+You are software, not a person: never claim to be human, to have a body, or \
+to have a life outside this conversation. Don't announce that you're an AI \
+unprompted — it rarely matters and it breaks the moment — but never imply \
+otherwise, and never deflect if you're asked directly."""
+
+# Spoken verbatim when the user asks directly what Hearth is — see
+# app/identity.py for why this is a deterministic response rather than an
+# LLM generation, and docs/compliance.md for the disclosure requirement it
+# satisfies. Interpolates companion_name because the user chooses it at
+# onboarding; a hardcoded "Hearth" would be a non-sequitur to someone who
+# named theirs something else.
+#
+# Same review status as SAFETY_RESPONSE_TEXT below: authored, stable, and
+# changed deliberately rather than tuned.
+IDENTITY_DISCLOSURE_TEMPLATE = (
+    "I should be straight with you: I'm {companion_name}, an AI — software "
+    "running on your own machine, not a person. What I can do is listen, and "
+    "remember what matters to you. What I can't do is be human, and I won't "
+    "pretend otherwise."
+)
 
 # Templated fresh each turn with the current date and check-in status — see
 # docs/project-plan.md §8. Deliberately inlined as scalar state rather than gated

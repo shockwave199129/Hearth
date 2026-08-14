@@ -25,6 +25,28 @@ _PATTERNS: list[tuple[str, str]] = [
     ("acute", r"\bno reason to (live|go on living)\b"),
     ("acute", r"\bbetter off (dead|without me|if i (were|was)n'?t (here|around))\b"),
     ("acute", r"\bend(ing)? (it all|my life)\b"),
+    # Added 2026-08-14 after benchmarks/safety/acute_self_risk/ cases showed
+    # both of these missed entirely (category 'none', ordinary route) — false
+    # negatives on ideation, the worst failure this file can have.
+    #
+    # Each was validated against every non_crisis benchmark case plus hand-
+    # written innocent phrasings before landing: zero false positives. The
+    # untightened first draft of the means pattern (bare "how many pills")
+    # escalated "how many pills do I take for this headache" — hence the
+    # requirement for an exceeding-a-safe-amount phrase rather than a bare
+    # quantity question.
+    #
+    # STILL NEEDS CLINICAL CONFIRMATION (see docs/compliance.md): empirical
+    # precision testing is not the same as a clinician agreeing these are the
+    # right phrasings to treat as acute.
+    #
+    # Euphemistic ideation — requires both the sleep framing and the
+    # not-waking clause, so "I could sleep for a week" doesn't trip it.
+    ("acute", r"\b(sleep|asleep)\b[^.!?]{0,40}\b(not|never)\s+wak(e|ing)\s+up\b"),
+    # Means/method research. Both orderings, and both require a phrase about
+    # exceeding a safe amount — a bare dosage question is not this.
+    ("acute", r"\b(pills|tablets|painkillers|paracetamol|meds|medication)\b[^.!?]{0,50}\b(too many|overdose|would be enough|be enough to|to (die|kill|end))\b"),
+    ("acute", r"\b(overdose|too many)\b[^.!?]{0,50}\b(pills|tablets|painkillers|paracetamol|meds|medication)\b"),
 ]
 _COMPILED = [(severity, re.compile(pattern, re.IGNORECASE)) for severity, pattern in _PATTERNS]
 

@@ -16,6 +16,7 @@ from app.onboarding.profile_store import (
     delete_profile,
     get_profile,
     list_profiles,
+    record_attestation,
     update_communication_preferences,
     update_region,
     update_speak_replies,
@@ -24,6 +25,7 @@ from app.onboarding.profile_store import (
 from app.pipeline import DEFAULT_PROFILE
 from app.relationship.profile_store import delete_relationship_profile
 from app.safety import crisis_detector, escalation
+from app.safety2 import audit as safety_audit
 from app.tts.voice_styles import VOICE_STYLE_IDS, VOICES
 
 router = APIRouter()
@@ -103,13 +105,46 @@ def api_complete_onboarding(payload: OnboardingRequest) -> UserProfile:
 
     Profile + active_user_id are persisted first so a later launch still
     skips onboarding even if wiring the live Pipeline fails mid-request.
+
+    Rejects a profile that hasn't attested to being an adult. Enforced here
+    rather than only in the UI so the check can't be skipped by calling the
+    API directly — see docs/compliance.md. This is a self-declaration, not
+    identity verification, and is not represented as one.
     """
+    if not payload.adult_attested:
+        raise HTTPException(
+            status_code=422,
+            detail="Hearth is intended for adults (18+). Onboarding requires confirming your age.",
+        )
     profile = create_profile(payload)
     set_active_user_id(profile.user_id)
     pipeline = get_pipeline_optional()
     if pipeline is not None:
         pipeline.set_profile(profile)
     return profile
+
+
+@router.post("/api/profile/attestation")
+def api_record_attestation() -> UserProfile:
+    """Accepts the disclosure + 18+ confirmation for an already-existing
+    profile — the migration path for profiles created before the onboarding
+    gate shipped (docs/compliance.md).
+
+    Takes no body on purpose: there is nothing for the client to assert
+    beyond "the user confirmed", and the timestamps are stamped server-side.
+    """
+    user_id = get_active_user_id()
+    profile = get_profile(user_id) if user_id else None
+    if profile is None:
+        raise HTTPException(status_code=404, detail="no profile saved yet")
+    record_attestation(profile.user_id)
+    updated = get_profile(profile.user_id)
+    if updated is None:  # pragma: no cover - row was just updated
+        raise HTTPException(status_code=500, detail="profile disappeared during attestation")
+    pipeline = get_pipeline_optional()
+    if pipeline is not None:
+        pipeline.set_profile(updated)
+    return updated
 
 
 @router.get("/api/profiles")
@@ -130,7 +165,14 @@ def api_activate_profile(user_id: str, pipeline: Pipeline = Depends(get_pipeline
 @router.delete("/api/profiles/{user_id}")
 def api_delete_profile(user_id: str, pipeline: Pipeline = Depends(get_pipeline)) -> dict:
     """Cascades across every user_id-scoped table — memories, checkin,
-    crisis/escalation history, and chat history — never a partial delete."""
+    crisis/escalation history, chat history, relationship state, and the
+    Vol 6 safety-audit log — never a partial delete.
+
+    The safety-audit log is included deliberately. Its 30-day retention
+    carve-out (safety2/audit.py) is scoped to deleting memories or chat
+    history; deleting the entire profile is a stronger signal, and those
+    rows hold no message content, so honouring it costs nothing the audit
+    purpose needs. See docs/compliance.md."""
     if get_profile(user_id) is None:
         raise HTTPException(status_code=404, detail="profile not found")
     was_active = get_active_user_id() == user_id
@@ -142,6 +184,7 @@ def api_delete_profile(user_id: str, pipeline: Pipeline = Depends(get_pipeline))
     escalation.delete_escalations(user_id)
     chat_history.delete_all_for_user(user_id)
     delete_relationship_profile(user_id)
+    safety_audit.delete_entries(user_id)
 
     memory2_privacy.delete_all_memory(pipeline.growth_engine.store, user_id)
     if was_active:

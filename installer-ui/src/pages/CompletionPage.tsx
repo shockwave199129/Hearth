@@ -17,8 +17,8 @@ export function CompletionPage() {
         <div className="success-icon">✓</div>
         <h2>Hearth has been successfully installed!</h2>
         <p>
-          Your emotional-support voice companion is ready to use. On the next launch, the app will
-          download and configure models for your hardware tier.
+          Your personal AI companion is ready to use. On the next launch, the app will download and
+          configure models for your hardware tier.
         </p>
 
         <div className="info-box">

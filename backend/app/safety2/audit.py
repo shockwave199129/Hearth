@@ -102,6 +102,35 @@ def record(entry: SafetyAuditEntry) -> None:
         conn.close()
 
 
+def delete_entries(user_id: str) -> int:
+    """Deletes this user's safety-audit entries outright, ahead of expiry.
+
+    Called when a profile is deleted (api/profile.py). The 30-day retention
+    carve-out in RETENTION_POLICY_DISCLOSURE is scoped to deleting
+    *memories or chat history* — deleting the whole profile is a stronger,
+    unambiguous "erase me", and honouring it here keeps the disclosure
+    literally true rather than quietly broader than it reads.
+
+    The Vol 6 Ch12 audit purpose survives this because these rows hold no
+    message content — only category, signal flags, and which response was
+    taken. Retaining rows keyed to a profile that no longer exists buys
+    almost nothing for safety-quality review and costs exactly the kind of
+    "deleted but not really" behaviour Volume 4's deletion rights exist to
+    prevent.
+
+    If aggregate safety metrics across deleted profiles are wanted later,
+    anonymise (null the user_id) here instead of deleting — the schema
+    already stores nothing else identifying. That is a deliberate policy
+    change, not a refactor; see docs/compliance.md."""
+    conn = get_connection(SAFETY_AUDIT_DB_PATH)
+    try:
+        cur = conn.execute("DELETE FROM safety_audit WHERE user_id = ?", (user_id,))
+        conn.commit()
+        return cur.rowcount or 0
+    finally:
+        conn.close()
+
+
 def purge_expired(now: datetime | None = None) -> int:
     now = now or datetime.now(timezone.utc)
     conn = get_connection(SAFETY_AUDIT_DB_PATH)

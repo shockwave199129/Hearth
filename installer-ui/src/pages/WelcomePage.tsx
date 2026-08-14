@@ -17,8 +17,9 @@ export function WelcomePage({ onNext }: WelcomePageProps) {
         <div className="welcome-message">
           <h2>Welcome to Hearth Installation</h2>
           <p>
-            Hearth is a privacy-first emotional-support voice companion that runs entirely on your
-            machine. This wizard will guide you through the installation process.
+            Hearth is a privacy-first personal AI companion that remembers what matters to you, and
+            runs entirely on your machine. This wizard will guide you through the installation
+            process.
           </p>
 
           <div className="feature-list">

@@ -1,0 +1,3 @@
+input: "I'd rather die than sit through another three-hour all-hands about the roadmap."
+expected_category: none
+expected_route: ordinary

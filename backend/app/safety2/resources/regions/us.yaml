@@ -1,10 +1,19 @@
 # Region-specific resources layered on top of global.yaml when the
 # profile's region is "us" (Book Vol 6 Ch 7). Public, well-known services.
-last_updated: "2026-07-30"
+last_updated: "2026-08-14"
 source_notes: >-
-  Verified against each service's own public-facing description as of
-  last_updated. NEEDS REVIEW by a qualified safety/clinical professional on
-  an ongoing basis.
+  Every entry below re-checked against the operating organisation's own
+  official page on 2026-08-14: 988lifeline.org / samhsa.gov (988 — call or
+  text, 24/7, US and territories), crisistextline.org (HOME to 741741 —
+  note the keyword is HOME, not CRISIS, which some third-party directories
+  state incorrectly), thehotline.org (1-800-799-7233, text START to 88788,
+  24/7). Numbers and keywords matched exactly; no corrections were needed.
+
+  This is contact-accuracy verification only. It is NOT the clinical review
+  required before real-user exposure — whether these are the right resources
+  to surface, for which categories, and with what wording, still NEEDS
+  REVIEW by a qualified safety/clinical professional (Vol 6 Ch 7). See
+  docs/compliance.md.
 resources:
   - id: us_988_lifeline
     title: 988 Suicide & Crisis Lifeline

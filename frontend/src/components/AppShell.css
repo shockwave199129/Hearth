@@ -19,6 +19,24 @@
   font-size: var(--fs-lg);
   padding: 0 var(--space-3);
   margin-bottom: var(--space-7);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+/* Quiet but always present — this is a standing disclosure, so it must not
+   be dismissible or scroll away. Muted rather than loud on purpose: it has
+   to be legible, not alarming. */
+.app-shell__brand-tag {
+  font-family: var(--font-body, inherit);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+  opacity: 0.55;
+  flex-shrink: 0;
 }
 
 .app-shell__links {

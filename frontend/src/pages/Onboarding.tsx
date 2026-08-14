@@ -40,9 +40,13 @@ interface OnboardingData {
   emergencyContactName: string;
   emergencyContactMethod: "sms" | "email";
   emergencyContactValue: string;
+  adultAttested: boolean;
 }
 
-const STEPS = ["Names", "About you", "What's on your mind", "Style", "Voice", "Safety"] as const;
+// "What this is" is last rather than first on purpose: it's the gate on
+// actually starting, and nothing is persisted until the final step submits.
+// See docs/compliance.md for why the disclosure exists at all.
+const STEPS = ["Names", "About you", "What's on your mind", "Style", "Voice", "Safety", "What this is"] as const;
 
 export function Onboarding() {
   const navigate = useNavigate();
@@ -65,9 +69,13 @@ export function Onboarding() {
     emergencyContactName: "",
     emergencyContactMethod: "sms",
     emergencyContactValue: "",
+    adultAttested: false,
   });
 
   const isLastStep = step === STEPS.length - 1;
+  // The backend rejects an unattested profile too (api/profile.py) — this
+  // only keeps the user from submitting something it would refuse.
+  const blockedOnAttestation = isLastStep && !data.adultAttested;
 
   const toggleStressor = (option: string) => {
     setData((prev) => ({
@@ -98,6 +106,7 @@ export function Onboarding() {
         emergency_contact_name: data.emergencyContactConsent ? data.emergencyContactName.trim() || null : null,
         emergency_contact_method: data.emergencyContactConsent ? data.emergencyContactMethod : null,
         emergency_contact_value: data.emergencyContactConsent ? data.emergencyContactValue.trim() || null : null,
+        adult_attested: data.adultAttested,
       });
       showAlert({ type: "success", message: "Profile ready — welcome in." });
       navigate("/chat", { replace: true });
@@ -321,6 +330,43 @@ export function Onboarding() {
           </div>
         )}
 
+        {step === 6 && (
+          <div className="onboarding__step">
+            <h1>Before we start, plainly</h1>
+            <p className="onboarding__hint">
+              {data.companionName.trim() || "Your companion"} is an AI — software running on this
+              machine. Not a person, and not a therapist. It won't ever claim otherwise, and if you
+              ask it directly, it will tell you the same thing.
+            </p>
+            <ul className="onboarding__disclosure">
+              <li>
+                <strong>It's for reflection, not treatment.</strong> Talking things through,
+                journaling, remembering what matters to you. It doesn't diagnose or treat anything,
+                and it isn't a substitute for professional care.
+              </li>
+              <li>
+                <strong>It isn't an emergency service.</strong> If things get serious it will help
+                you find real human support — but in an emergency, contact emergency services.
+              </li>
+              <li>
+                <strong>Your conversations stay here.</strong> On this device, encrypted. The one
+                exception is the crisis contact you just chose, if you chose one.
+              </li>
+              <li>
+                <strong>It's built for adults.</strong> Hearth is intended for people 18 and over.
+              </li>
+            </ul>
+            <label className="onboarding__field onboarding__field--checkbox">
+              <input
+                type="checkbox"
+                checked={data.adultAttested}
+                onChange={(e) => setData((p) => ({ ...p, adultAttested: e.target.checked }))}
+              />
+              <span>I'm 18 or older, and I understand I'll be talking to software.</span>
+            </label>
+          </div>
+        )}
+
         {submitError && <p className="onboarding__error">{submitError}</p>}
 
         <div className="onboarding__actions">
@@ -336,7 +382,8 @@ export function Onboarding() {
             type="button"
             className="onboarding__button onboarding__button--primary"
             onClick={() => (isLastStep ? void finish() : setStep((s) => s + 1))}
-            disabled={submitting}
+            disabled={submitting || blockedOnAttestation}
+            title={blockedOnAttestation ? "Confirm the box above to continue" : undefined}
           >
             {isLastStep ? (submitting ? "Saving…" : "Start talking") : "Continue"}
           </button>

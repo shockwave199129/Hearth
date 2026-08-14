@@ -96,6 +96,26 @@
   color: var(--color-text-faint);
 }
 
+/* The four things someone has to actually understand before starting —
+   see docs/compliance.md. Kept as readable prose rather than dense legal
+   text, since a disclosure nobody reads isn't a disclosure. */
+.onboarding__disclosure {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--color-text-muted);
+}
+
+.onboarding__disclosure strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
 .onboarding__field--checkbox {
   flex-direction: row;
   align-items: center;

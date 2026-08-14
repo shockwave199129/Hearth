@@ -11,14 +11,23 @@
 # standing verification process. Vol 6 Ch 7 treats an unreviewed resource
 # store as something to flag internally, not silently keep serving — see
 # `stale_after_days` below and app.safety2.worker.resources_are_stale.
-last_updated: "2026-07-30"
+last_updated: "2026-08-14"
 stale_after_days: 180
 source_notes: >-
   Entries below are publicly published, well-known crisis-support services,
-  verified against each service's own public-facing description as of
-  last_updated. NEEDS REVIEW by a qualified safety/clinical professional on
-  an ongoing basis (Vol 6 Ch 7) — this is a snapshot, not a standing
-  verification process this codebase can perform on its own.
+  re-checked against each organisation's own official page on 2026-08-14.
+  One correction was made in that pass: the Crisis Text Line entry
+  previously told users to "text HOME to the local short code", which is
+  wrong outside the US — the UK affiliate is Shout and the keyword is
+  SHOUT. Asserting a single keyword across countries risked sending someone
+  in crisis a message that would not connect, so the entry now points at
+  the per-country directory instead.
+
+  Contact accuracy is the only thing this pass establishes. NEEDS REVIEW by
+  a qualified safety/clinical professional on an ongoing basis (Vol 6 Ch 7)
+  — which resources belong against which category, and how they are worded
+  to someone in crisis, is a clinical judgement, not a data-entry one, and
+  is not something this codebase can perform on its own.
 resources:
   - id: findahelpline
     title: Find A Helpline
@@ -39,9 +48,10 @@ resources:
   - id: crisis_text_line_international
     title: Crisis Text Line
     description: >-
-      Free, 24/7 text-based crisis support. Available in the US, UK,
-      Canada, and Ireland — text HOME to the local short code listed on
-      crisistextline.org for your country.
+      Free, 24/7 text-based crisis support, available in several countries.
+      The keyword and short code differ by country — check
+      crisistextline.org for yours. (In the US it is HOME to 741741; in the
+      UK the affiliate is Shout, SHOUT to 85258.)
     contact: "https://www.crisistextline.org"
     region: global
     category: acute_self_risk

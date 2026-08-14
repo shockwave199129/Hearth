@@ -14,9 +14,11 @@ core design (privacy-first, fully local, no telemetry) needs a consistent
 hand while it's still being defined, and most decisions are still
 reversible.
 
-This is **not** meant to be permanent, and it is not a claim of ownership
-over the project. See "Licensing and ownership" below for why that
-distinction is real and enforceable, not just a promise.
+This is **not** meant to be permanent. It is also not a claim to own the
+*codebase* — no single entity does, and structurally cannot. The "Hearth"
+name is held by the company; the code is not. See "Open core, and a
+company" and "Licensing and ownership" below for why that distinction is
+real and enforceable rather than a promise.
 
 ## Where we're going: Core team governance
 
@@ -37,24 +39,43 @@ source projects converge on, borrowed from Apache-style governance): a
 change ships if no maintainer objects within a review window; if someone
 objects, maintainers vote and majority decides.
 
-## The succession commitment
+To be exact about scope, since this project has a company attached: that
+vote governs **the open core** — the code in this repository, its
+architecture, and its releases. It does not extend to the company's paid
+offerings or the trademark. Where the two touch, the open core's
+commitments win: no maintainer vote and no commercial decision can move
+safety, crisis handling, or privacy controls out of the open core.
 
-The long-term intent for Hearth is the same trajectory as projects like
-Linux or Git: founder-led at the start, community-governed later, never
-sold to a single company for exclusive control. Concretely:
+## Open core, and a company
 
-1. **No exclusive sale of the project or its trademark is planned or
-   intended.** Anyone can already fork Hearth today under its license —
-   that's not a courtesy, it's structural (see below).
-2. When the core team is established and self-sustaining, maintainership
-   and the "Hearth" name/trademark are intended to transfer to a neutral
-   nonprofit fiscal host for independent open source projects (e.g.
-   Software Freedom Conservancy), the way Git, Inkscape, and QEMU have
-   done. This removes any single person's ability to unilaterally change
-   the license or governance later.
-3. Until that transfer happens, this file is the record of intent, and any
-   deviation from it should be treated as a legitimate reason for the
-   community to fork.
+Hearth is being built into a commercial product as well as an open source
+project. Saying so plainly matters more than the arrangement itself, since
+the failure mode here is a project that quietly changes character after
+people have invested in it.
+
+Concretely:
+
+1. **The core stays open, under Apache 2.0.** The local runtime, desktop
+   app, memory infrastructure, model integration, and safety architecture
+   are the open project. This is the part you can run, audit, modify, and
+   fork.
+2. **A company holds the "Hearth" name and builds paid offerings on top.**
+   Trademark is the one thing not shared — so that "Hearth" continues to
+   mean a specific set of privacy commitments rather than anything anyone
+   ships under the name. Forks are welcome and expected; they need their
+   own name.
+3. **Paid never means a paywall on safety.** Crisis handling, safety
+   detection, privacy controls, and the ability to inspect and delete your
+   own data are core functionality and stay in the open core, permanently.
+   See "Commercial use" below.
+
+An earlier version of this document committed to transferring the
+trademark to a neutral nonprofit fiscal host. That commitment is withdrawn
+here, deliberately and on the record rather than by quiet edit. It was
+published on 2026-08-14 and withdrawn the same day, before any external
+contributor could rely on it — the repository had no forks and no outside
+contributors at the time. Anyone who disagrees with the change has the
+fork right described below, which is unaffected.
 
 ## Licensing and ownership (what is and isn't enforceable)
 

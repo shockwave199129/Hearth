@@ -20,7 +20,8 @@ _COLUMNS = (
     "communication_formality, response_length, emoji_usage, speak_replies, emergency_contact_consent, emergency_contact_name, emergency_contact_method, "
     "emergency_contact_value, relationship_general_trust, relationship_vulnerability_trust, "
     "relationship_advice_trust, relationship_consistency_confidence, relationship_boundaries, relationship_life_model, "
-    "communication_traits_json, skill_affinity_json, evaluation_last_run_at, region, created_at"
+    "communication_traits_json, skill_affinity_json, evaluation_last_run_at, region, "
+    "adult_attested, adult_attested_at, ai_disclosure_ack_at, created_at"
 )
 
 
@@ -53,6 +54,9 @@ def _row_to_profile(row) -> UserProfile:
         skill_affinity_json,
         evaluation_last_run_at,
         region,
+        adult_attested,
+        adult_attested_at,
+        ai_disclosure_ack_at,
         created_at,
     ) = row
     return UserProfile(
@@ -83,19 +87,32 @@ def _row_to_profile(row) -> UserProfile:
         skill_affinity=json.loads(skill_affinity_json or "{}"),
         evaluation_last_run_at=datetime.fromisoformat(evaluation_last_run_at) if evaluation_last_run_at else None,
         region=region,
+        adult_attested=bool(adult_attested),
+        adult_attested_at=datetime.fromisoformat(adult_attested_at) if adult_attested_at else None,
+        ai_disclosure_ack_at=datetime.fromisoformat(ai_disclosure_ack_at) if ai_disclosure_ack_at else None,
         created_at=datetime.fromisoformat(created_at),
     )
 
 
 def create_profile(payload: OnboardingRequest) -> UserProfile:
+    now = datetime.now(timezone.utc)
+    # Attestation and disclosure timestamps are stamped here, server-side,
+    # rather than accepted from the client — a caller must not be able to
+    # backdate when someone was shown the disclosure. Both record the same
+    # moment because the onboarding step presents them together.
+    attested_at = now if payload.adult_attested else None
     profile = UserProfile(
-        user_id=str(uuid.uuid4()), created_at=datetime.now(timezone.utc), **payload.model_dump()
+        user_id=str(uuid.uuid4()),
+        created_at=now,
+        adult_attested_at=attested_at,
+        ai_disclosure_ack_at=attested_at,
+        **payload.model_dump(),
     )
     conn = get_connection(PROFILE_DB_PATH)
     try:
         conn.execute(
             f"INSERT INTO profiles ({_COLUMNS}) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 profile.user_id,
                 profile.name,
@@ -124,6 +141,9 @@ def create_profile(payload: OnboardingRequest) -> UserProfile:
                 json.dumps(profile.skill_affinity),
                 profile.evaluation_last_run_at.isoformat() if profile.evaluation_last_run_at else None,
                 profile.region,
+                int(profile.adult_attested),
+                profile.adult_attested_at.isoformat() if profile.adult_attested_at else None,
+                profile.ai_disclosure_ack_at.isoformat() if profile.ai_disclosure_ack_at else None,
                 profile.created_at.isoformat(),
             ),
         )
@@ -180,6 +200,30 @@ def update_region(user_id: str, region: str | None) -> None:
     conn = get_connection(PROFILE_DB_PATH)
     try:
         conn.execute("UPDATE profiles SET region = ? WHERE user_id = ?", (region, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_attestation(user_id: str) -> None:
+    """Records that this profile has seen and accepted the disclosure.
+
+    Needed for profiles created before the onboarding gate existed — they
+    default to not-attested (see db/sqlite_models.py) and the app blocks on
+    that until this is called. Timestamps are set here rather than passed in
+    so they always reflect when the user actually confirmed.
+
+    Idempotent, but deliberately does not preserve an earlier timestamp: if
+    someone is re-prompted because the disclosure wording changed, the newer
+    time is the one that matters."""
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection(PROFILE_DB_PATH)
+    try:
+        conn.execute(
+            "UPDATE profiles SET adult_attested = 1, adult_attested_at = ?, ai_disclosure_ack_at = ? "
+            "WHERE user_id = ?",
+            (now, now, user_id),
+        )
         conn.commit()
     finally:
         conn.close()

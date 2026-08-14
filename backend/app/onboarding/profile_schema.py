@@ -50,6 +50,16 @@ class UserProfile(BaseModel):
     # global resources when unset, never presenting a region-specific
     # resource as universally applicable.
     region: str | None = None
+    # Disclosure + eligibility, recorded at onboarding — see
+    # docs/compliance.md. `adult_attested` is a self-declaration, which is
+    # the ordinary standard; it is not identity verification and must not be
+    # described as one. `ai_disclosure_ack_at` records that the user was
+    # shown, and acknowledged, that Hearth is software rather than a person.
+    # Both are timestamped so a later policy change can tell who was
+    # onboarded under which wording.
+    adult_attested: bool = False
+    adult_attested_at: datetime | None = None
+    ai_disclosure_ack_at: datetime | None = None
     created_at: datetime
 
 
@@ -80,3 +90,7 @@ class OnboardingRequest(BaseModel):
     emergency_contact_method: str | None = None
     emergency_contact_value: str | None = None
     region: str | None = None
+    # Required to complete onboarding — the route rejects a profile without
+    # it rather than silently defaulting. Timestamps are server-stamped, not
+    # client-supplied, so they can't be backdated.
+    adult_attested: bool = False

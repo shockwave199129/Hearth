@@ -19,7 +19,16 @@ export function AppShell() {
   return (
     <div className="app-shell">
       <nav className="app-shell__rail" aria-label="Primary">
-        <div className="app-shell__brand">{profile?.companion_name ?? "Companion"}</div>
+        {/* The persistent half of the AI disclosure (docs/compliance.md).
+            Deliberately part of the app furniture rather than something the
+            companion says — a standing label satisfies the requirement
+            without the conversation restating it. */}
+        <div className="app-shell__brand">
+          {profile?.companion_name ?? "Companion"}
+          <span className="app-shell__brand-tag" title="Hearth is software, not a person">
+            AI
+          </span>
+        </div>
         <div className="app-shell__links">
           <NavLink
             to="/chat"

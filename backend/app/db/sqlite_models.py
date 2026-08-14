@@ -190,6 +190,13 @@ _PROFILES_TEXT_INPUT_COLUMNS = {
     "skill_affinity_json": "TEXT NOT NULL DEFAULT '{}'",
     "evaluation_last_run_at": "TEXT",
     "region": "TEXT",
+    # Disclosure + eligibility (docs/compliance.md). Existing rows default to
+    # not-attested rather than being grandfathered in as attested — a profile
+    # created before this column existed genuinely never saw the disclosure,
+    # and recording otherwise would make the audit trail a lie.
+    "adult_attested": "INTEGER NOT NULL DEFAULT 0",
+    "adult_attested_at": "TEXT",
+    "ai_disclosure_ack_at": "TEXT",
 }
 
 

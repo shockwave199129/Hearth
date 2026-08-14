@@ -26,6 +26,11 @@ export interface Profile {
   emergency_contact_name: string | null;
   emergency_contact_method: "sms" | "email" | null;
   emergency_contact_value: string | null;
+  // Disclosure + eligibility recorded at onboarding — see docs/compliance.md.
+  // The `_at` timestamps are server-stamped and read-only here.
+  adult_attested: boolean;
+  adult_attested_at: string | null;
+  ai_disclosure_ack_at: string | null;
   created_at: string;
 }
 
@@ -33,6 +38,8 @@ export type OnboardingPayload = Omit<
   Profile,
   | "created_at"
   | "user_id"
+  | "adult_attested_at"
+  | "ai_disclosure_ack_at"
   | "relationship_general_trust"
   | "relationship_vulnerability_trust"
   | "relationship_advice_trust"
@@ -55,6 +62,9 @@ export interface ProfileContextValue {
     preferred_voice: PreferredVoice;
     voice_style: VoiceStyleId;
   }) => Promise<void>;
+  /** Accepts the disclosure for a profile created before the onboarding gate
+   * existed — see docs/compliance.md. */
+  acceptDisclosure: () => Promise<void>;
 }
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
@@ -151,6 +161,13 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     [profile],
   );
 
+  const acceptDisclosure = useCallback(async () => {
+    const res = await backendFetch("/api/profile/attestation", { method: "POST" });
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    const updated = (await res.json()) as Profile;
+    setProfile(updated);
+  }, []);
+
   const value = useMemo(
     () => ({
       profile,
@@ -160,6 +177,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       setSpeakReplies,
       setCommunicationPreferences,
       setVoicePreferences,
+      acceptDisclosure,
     }),
     [
       profile,
@@ -169,6 +187,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       setSpeakReplies,
       setCommunicationPreferences,
       setVoicePreferences,
+      acceptDisclosure,
     ],
   );
 

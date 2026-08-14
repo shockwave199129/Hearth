@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
+import { DisclosureGate } from "./components/DisclosureGate";
 import { Onboarding } from "./pages/Onboarding";
 import { Setup } from "./pages/Setup";
 import { useProfile } from "./hooks/useProfile";
@@ -70,6 +71,15 @@ export function App() {
   // again either; Chat/Settings surface the connection problem instead.
   const hasProfile = profile !== null;
   const skipOnboarding = hasProfile || error !== null;
+
+  // A profile that predates the onboarding disclosure step has never seen
+  // it, so it is gated here before any route renders — including Settings,
+  // since the point is that it can't be navigated around. New profiles
+  // always arrive attested (POST /api/onboarding rejects otherwise), so this
+  // only ever fires for pre-existing installs. See docs/compliance.md.
+  if (profile !== null && !profile.adult_attested) {
+    return <DisclosureGate />;
+  }
 
   return (
     <Routes>
