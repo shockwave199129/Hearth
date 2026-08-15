@@ -1,5 +1,6 @@
 /*
-  Design language: calm, warm, unhurried — a companion, not a dashboard.
+  Design language: calm, unhurried — a companion, not a dashboard.
+  Color: indigo/violet accents on slate neutrals (see assets/colors.png).
   Fraunces (variable, warm humanist serif) carries the companion's voice
   and headline moments; Inter (variable) handles UI and transcript text,
   where clarity matters more than character. Both self-hosted (@fontsource)
@@ -45,72 +46,94 @@
   --duration-normal: 280ms;
   --duration-slow: 600ms;
 
-  /* Dark theme (default) — soft near-black, not pure black; warm rather than blue-tinted. */
-  --color-bg: #0e0d0c;
-  --color-bg-elevated: #171615;
-  --color-bg-elevated-2: #1f1d1b;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-strong: rgba(255, 255, 255, 0.16);
-  --color-text: #f2ede6;
-  --color-text-muted: #a9a19a;
-  --color-text-faint: #746c66;
+  /* Brand palette — indigo / violet / blue / cyan on slate neutrals. */
+  --palette-indigo: #6366f1;
+  --palette-violet: #8b5cf6;
+  --palette-blue: #3b82f6;
+  --palette-cyan: #22d3ee;
+  --palette-navy: #0f172a;
+  --palette-slate: #334155;
+  --palette-muted: #94a3b8;
+  --palette-mist: #e2e8f0;
 
-  --color-accent: #8fbfae;       /* muted sage — calm, present tense */
-  --color-accent-strong: #aad4c4;
-  --color-accent-soft: rgba(143, 191, 174, 0.14);
-  --color-warm: #e3b989;         /* warm amber — check-ins, gentle prompts */
-  --color-warm-soft: rgba(227, 185, 137, 0.16);
-  --color-danger: #d98c8c;
-  --color-danger-soft: rgba(217, 140, 140, 0.14);
+  /* Dark theme (default) — navy slate, not warm charcoal. */
+  --color-bg: var(--palette-navy);
+  --color-bg-elevated: color-mix(in srgb, var(--palette-navy) 58%, var(--palette-slate) 42%);
+  --color-bg-elevated-2: var(--palette-slate);
+  --color-border: color-mix(in srgb, var(--palette-mist) 12%, transparent);
+  --color-border-strong: color-mix(in srgb, var(--palette-mist) 22%, transparent);
+  --color-text: var(--palette-mist);
+  --color-text-muted: var(--palette-muted);
+  --color-text-faint: color-mix(in srgb, var(--palette-muted) 62%, var(--palette-slate) 38%);
 
-  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.2), 0 12px 32px rgba(0, 0, 0, 0.35);
+  --color-accent: var(--palette-indigo);
+  --color-accent-strong: var(--palette-violet);
+  --color-accent-soft: color-mix(in srgb, var(--palette-indigo) 18%, transparent);
+  --color-accent-contrast: var(--palette-mist);
+  --color-warm: var(--palette-cyan);
+  --color-warm-soft: color-mix(in srgb, var(--palette-cyan) 18%, transparent);
+  --color-danger: #f87171;
+  --color-danger-soft: color-mix(in srgb, #f87171 16%, transparent);
+
+  --shadow-soft: 0 1px 2px color-mix(in srgb, var(--palette-navy) 55%, transparent),
+    0 12px 32px color-mix(in srgb, var(--palette-navy) 72%, transparent);
   --shadow-ring: 0 0 0 1px var(--color-border);
 
-  --orb-glow: radial-gradient(circle at 50% 42%, #c9e4d9 0%, #8fbfae 42%, #4f7d6c 78%, #2a4438 100%);
+  --orb-glow: radial-gradient(
+    circle at 50% 42%,
+    var(--palette-cyan) 0%,
+    var(--palette-blue) 32%,
+    var(--palette-indigo) 62%,
+    var(--palette-violet) 100%
+  );
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
-    --color-bg: #faf7f2;
-    --color-bg-elevated: #ffffff;
-    --color-bg-elevated-2: #f1ece3;
-    --color-border: rgba(20, 18, 15, 0.08);
-    --color-border-strong: rgba(20, 18, 15, 0.16);
-    --color-text: #211d18;
-    --color-text-muted: #6b645c;
-    --color-text-faint: #9a9188;
+    --color-bg: var(--palette-mist);
+    --color-bg-elevated: color-mix(in srgb, var(--palette-mist) 28%, white);
+    --color-bg-elevated-2: color-mix(in srgb, var(--palette-mist) 72%, var(--palette-muted) 28%);
+    --color-border: color-mix(in srgb, var(--palette-navy) 10%, transparent);
+    --color-border-strong: color-mix(in srgb, var(--palette-navy) 18%, transparent);
+    --color-text: var(--palette-navy);
+    --color-text-muted: var(--palette-slate);
+    --color-text-faint: var(--palette-muted);
 
-    --color-accent: #4c8973;
-    --color-accent-strong: #386b58;
-    --color-accent-soft: rgba(76, 137, 115, 0.1);
-    --color-warm: #b97a3d;
-    --color-warm-soft: rgba(185, 122, 61, 0.12);
-    --color-danger: #b23b3b;
-    --color-danger-soft: rgba(178, 59, 59, 0.1);
+    --color-accent: var(--palette-indigo);
+    --color-accent-strong: var(--palette-blue);
+    --color-accent-soft: color-mix(in srgb, var(--palette-indigo) 12%, transparent);
+    --color-accent-contrast: white;
+    --color-warm: var(--palette-cyan);
+    --color-warm-soft: color-mix(in srgb, var(--palette-cyan) 16%, transparent);
+    --color-danger: #dc2626;
+    --color-danger-soft: color-mix(in srgb, #dc2626 12%, transparent);
 
-    --shadow-soft: 0 1px 2px rgba(20, 18, 15, 0.06), 0 12px 28px rgba(20, 18, 15, 0.08);
+    --shadow-soft: 0 1px 2px color-mix(in srgb, var(--palette-navy) 8%, transparent),
+      0 12px 28px color-mix(in srgb, var(--palette-navy) 10%, transparent);
   }
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --color-bg: #faf7f2;
-  --color-bg-elevated: #ffffff;
-  --color-bg-elevated-2: #f1ece3;
-  --color-border: rgba(20, 18, 15, 0.08);
-  --color-border-strong: rgba(20, 18, 15, 0.16);
-  --color-text: #211d18;
-  --color-text-muted: #6b645c;
-  --color-text-faint: #9a9188;
+  --color-bg: var(--palette-mist);
+  --color-bg-elevated: color-mix(in srgb, var(--palette-mist) 28%, white);
+  --color-bg-elevated-2: color-mix(in srgb, var(--palette-mist) 72%, var(--palette-muted) 28%);
+  --color-border: color-mix(in srgb, var(--palette-navy) 10%, transparent);
+  --color-border-strong: color-mix(in srgb, var(--palette-navy) 18%, transparent);
+  --color-text: var(--palette-navy);
+  --color-text-muted: var(--palette-slate);
+  --color-text-faint: var(--palette-muted);
 
-  --color-accent: #4c8973;
-  --color-accent-strong: #386b58;
-  --color-accent-soft: rgba(76, 137, 115, 0.1);
-  --color-warm: #b97a3d;
-  --color-warm-soft: rgba(185, 122, 61, 0.12);
-  --color-danger: #b23b3b;
-  --color-danger-soft: rgba(178, 59, 59, 0.1);
+  --color-accent: var(--palette-indigo);
+  --color-accent-strong: var(--palette-blue);
+  --color-accent-soft: color-mix(in srgb, var(--palette-indigo) 12%, transparent);
+  --color-accent-contrast: white;
+  --color-warm: var(--palette-cyan);
+  --color-warm-soft: color-mix(in srgb, var(--palette-cyan) 16%, transparent);
+  --color-danger: #dc2626;
+  --color-danger-soft: color-mix(in srgb, #dc2626 12%, transparent);
 
-  --shadow-soft: 0 1px 2px rgba(20, 18, 15, 0.06), 0 12px 28px rgba(20, 18, 15, 0.08);
+  --shadow-soft: 0 1px 2px color-mix(in srgb, var(--palette-navy) 8%, transparent),
+    0 12px 28px color-mix(in srgb, var(--palette-navy) 10%, transparent);
 }

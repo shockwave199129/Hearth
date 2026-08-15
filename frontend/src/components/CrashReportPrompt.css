@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-5);
-  background: rgba(8, 7, 6, 0.55);
+  background: color-mix(in srgb, var(--palette-navy) 55%, transparent);
   backdrop-filter: blur(4px);
 }
 
@@ -84,5 +84,5 @@
 
 .crash-prompt__btn--primary:hover:not(:disabled) {
   background: var(--color-accent);
-  color: #0e0d0c;
+  color: var(--color-accent-contrast);
 }

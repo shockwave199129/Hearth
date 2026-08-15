@@ -1,3 +1,5 @@
+![Hearth — Your AI Companion. Private. Local. Always Yours.](assets/hearth.png)
+
 # Hearth
 
 A privacy-first personal AI companion that remembers what matters to you —

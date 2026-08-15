@@ -108,7 +108,7 @@
 
 .memory-panel__button--primary {
   background: var(--color-accent);
-  color: #10201a;
+  color: var(--color-accent-contrast);
 }
 
 .memory-panel__button--primary:hover {

@@ -98,7 +98,7 @@
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-standard);
   background: var(--color-accent);
-  color: #10201a;
+  color: var(--color-accent-contrast);
 }
 
 .setup__button:hover:not(:disabled) {

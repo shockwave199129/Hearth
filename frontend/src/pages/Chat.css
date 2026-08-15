@@ -68,7 +68,7 @@
   font-size: var(--fs-sm);
   font-weight: 560;
   background: var(--color-accent);
-  color: #10201a;
+  color: var(--color-accent-contrast);
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-standard);
 }

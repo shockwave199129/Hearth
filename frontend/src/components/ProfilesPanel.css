@@ -61,7 +61,7 @@
 
 .profiles-panel__button--primary {
   background: var(--color-accent);
-  color: #10201a;
+  color: var(--color-accent-contrast);
 }
 
 .profiles-panel__button--primary:hover {

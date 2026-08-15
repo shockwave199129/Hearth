@@ -84,7 +84,7 @@
   border: none;
   border-radius: var(--radius-md, 0.5rem);
   background: var(--color-accent);
-  color: var(--color-accent-contrast, #fff);
+  color: var(--color-accent-contrast);
   font-size: var(--fs-sm);
   cursor: pointer;
 }
