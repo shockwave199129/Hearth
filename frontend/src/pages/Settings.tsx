@@ -11,7 +11,9 @@ import { ProfilesPanel } from "../components/ProfilesPanel";
 import { getStoredTheme, setStoredTheme, type Theme } from "../lib/theme";
 import { friendlyActionError } from "../lib/errors";
 import { backendFetch } from "../lib/backendFetch";
+import { useMicrophone } from "../hooks/useMicrophone";
 import { useAlert } from "../lib/alerts";
+import type { MicHardware, MicPermission } from "../lib/microphone";
 import * as notifications from "../lib/notifications";
 import {
   VOICE_OPTIONS,
@@ -32,6 +34,12 @@ export function Settings() {
   const { status: checkinStatus, error: checkinError } = useCheckins();
   const { status: safetyStatus, error: safetyError } = useSafetyStatus();
   const { showAlert } = useAlert();
+  const {
+    hardware: micHardware,
+    permission: micPermission,
+    preferred: voiceInputPreferred,
+    setPreferred: setVoiceInputPreferred,
+  } = useMicrophone();
   const [theme, setTheme] = useState<Theme>(getStoredTheme);
   const [speakRepliesBusy, setSpeakRepliesBusy] = useState(false);
   const [speakRepliesError, setSpeakRepliesError] = useState<string | null>(null);
@@ -193,10 +201,41 @@ export function Settings() {
               <dt>Speech engine</dt>
               <dd>{status.tts_engine}</dd>
             </div>
+            <MicrophoneStatusItems hardware={micHardware} permission={micPermission} />
           </dl>
         ) : (
-          !error && <p className="settings__hint">Reading hardware…</p>
+          <>
+            {!error && <p className="settings__hint">Reading hardware…</p>}
+            <dl className="settings__grid">
+              <MicrophoneStatusItems hardware={micHardware} permission={micPermission} />
+            </dl>
+          </>
         )}
+        <div className="settings__field">
+          <span className="settings__field-label">Voice input</span>
+          <p className="settings__hint">
+            {micHardware === "absent"
+              ? "No microphone is available on this device. Typing still works."
+              : micPermission === "denied"
+                ? "Microphone access is blocked in the browser or OS. Allow it to talk out loud."
+                : "Use the microphone on Talk, or turn this off to type only."}
+          </p>
+          <div className="settings__segmented">
+            {[
+              { value: true, label: "On" },
+              { value: false, label: "Off" },
+            ].map((option) => (
+              <button
+                key={String(option.value)}
+                className={`settings__segment${voiceInputPreferred === option.value ? " settings__segment--active" : ""}`}
+                onClick={() => option.value !== voiceInputPreferred && setVoiceInputPreferred(option.value)}
+                disabled={micHardware === "absent" || micPermission === "denied"}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
 
       <section className="settings__section">
@@ -490,5 +529,36 @@ export function Settings() {
         {dataResetError && <p className="settings__error">{dataResetError}</p>}
       </section>
     </div>
+  );
+}
+
+function MicrophoneStatusItems({
+  hardware,
+  permission,
+}: {
+  hardware: MicHardware;
+  permission: MicPermission;
+}) {
+  return (
+    <>
+      <div>
+        <dt>Microphone</dt>
+        <dd>
+          {hardware === "present" ? "Detected" : hardware === "absent" ? "Not detected" : "Checking…"}
+        </dd>
+      </div>
+      <div>
+        <dt>Mic access</dt>
+        <dd>
+          {permission === "granted"
+            ? "Allowed"
+            : permission === "denied"
+              ? "Blocked"
+              : permission === "prompt"
+                ? "Not asked yet"
+                : "—"}
+        </dd>
+      </div>
+    </>
   );
 }

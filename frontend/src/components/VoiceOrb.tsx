@@ -8,6 +8,7 @@ interface VoiceOrbProps {
   amplitude?: number;
   onClick?: () => void;
   disabled?: boolean;
+  label?: string;
 }
 
 const LABELS: Record<OrbState, string> = {
@@ -17,9 +18,10 @@ const LABELS: Record<OrbState, string> = {
   speaking: "Speaking…",
 };
 
-export function VoiceOrb({ state, amplitude = 0, onClick, disabled }: VoiceOrbProps) {
+export function VoiceOrb({ state, amplitude = 0, onClick, disabled, label }: VoiceOrbProps) {
   const reactiveScale = 1 + Math.min(amplitude, 1) * 0.16;
   const style = { "--reactive-scale": reactiveScale } as CSSProperties;
+  const caption = label ?? LABELS[state];
 
   return (
     <div className="voice-orb-wrap">
@@ -29,13 +31,13 @@ export function VoiceOrb({ state, amplitude = 0, onClick, disabled }: VoiceOrbPr
         style={style}
         onClick={onClick}
         disabled={disabled}
-        aria-label={LABELS[state]}
+        aria-label={caption}
       >
         <span className="voice-orb__halo" aria-hidden />
         <span className="voice-orb__core" aria-hidden />
         <span className="voice-orb__ring" aria-hidden />
       </button>
-      <p className="voice-orb__label">{LABELS[state]}</p>
+      <p className="voice-orb__label">{caption}</p>
     </div>
   );
 }
