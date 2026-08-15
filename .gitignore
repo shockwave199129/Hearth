@@ -46,6 +46,8 @@ The Book/
 THF_implementation_plan.md
 .cursor/
 .codex/
+.vscode/
+.env
 
 # hearth_ai is a submodule (see .gitmodules). Ignore rules for its prepared
 # HF JSONL and training checkpoints live in hearth_ai/.gitignore instead —
