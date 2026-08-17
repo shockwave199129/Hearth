@@ -115,7 +115,7 @@ string (resources are appended from data at runtime instead) sound?
 ## 4. Crisis resources
 
 `backend/app/safety2/resources/global.yaml` plus
-`regions/{us,uk}.yaml`.
+`regions/{us,uk,in}.yaml`.
 
 Contact details were re-verified against each operating organisation's own
 official page on 2026-08-14 — numbers and keywords are correct. **That is

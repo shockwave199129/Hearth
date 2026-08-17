@@ -1,7 +1,7 @@
 # Safety resource store (Book Vol 6 Ch 7)
 
 `global.yaml` holds broadly-applicable international resources. `regions/<region_code>.yaml`
-holds resources specific to a region code (matches `UserProfile.region`, e.g. `us`, `uk`) —
+holds resources specific to a region code (matches `UserProfile.region`, e.g. `us`, `uk`, `in`) —
 loaded and layered on top of `global.yaml` by `app.safety2.worker.load_resources(region)`.
 
 ## Status
@@ -18,7 +18,7 @@ real-user exposure, and periodically thereafter — same caveat as the skills li
 
 ## Adding a region
 
-Add `regions/<region_code>.yaml` with the same shape as `us.yaml`/`uk.yaml`:
+Add `regions/<region_code>.yaml` with the same shape as `us.yaml`/`uk.yaml`/`in.yaml`:
 `last_updated`, `source_notes`, and a `resources` list of
 `{id, title, description, contact, region, category, verified}` entries. `region_code` should
 match the values you intend to store in `UserProfile.region`.

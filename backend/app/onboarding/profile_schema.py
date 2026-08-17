@@ -45,7 +45,7 @@ class UserProfile(BaseModel):
     emergency_contact_name: str | None = None
     emergency_contact_method: str | None = None    # "sms" | "email"
     emergency_contact_value: str | None = None
-    # Optional, user-provided region code (e.g. "us", "uk") used to select
+    # Optional, user-provided region code (e.g. "us", "uk", "in") used to select
     # regionally-relevant safety resources (Book Vol 6 Ch 7) — falls back to
     # global resources when unset, never presenting a region-specific
     # resource as universally applicable.

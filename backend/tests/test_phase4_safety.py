@@ -172,6 +172,11 @@ def test_resources_load_global_and_region():
     # Region entries are layered ahead of global fallback.
     assert ids.index("us_988_lifeline") < ids.index(global_only["resources"][0]["id"])
 
+    india = worker.load_resources("in")
+    india_ids = [r["id"] for r in india["resources"]]
+    assert "in_tele_manas" in india_ids
+    assert india_ids.index("in_tele_manas") < india_ids.index(global_only["resources"][0]["id"])
+
 
 def test_resources_unknown_region_falls_back_to_global():
     worker = SafetyWorker()

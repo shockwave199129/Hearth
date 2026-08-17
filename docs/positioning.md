@@ -88,6 +88,8 @@ onboarding translation. Each needs only verified crisis-resource data under
 `backend/app/safety2/resources/regions/`. `uk.yaml` already exists;
 `ca`/`au`/`ie`/`nz` do not. That file is the gate, and writing it means
 verifying live emergency and helpline numbers, not copying a list.
+(`in.yaml` also exists for India — a Tier 4 market whose other launch
+prerequisites are still open.)
 
 Lighter AI-specific regulation than the EU at present, which is a
 sequencing reason, not a permanent one.

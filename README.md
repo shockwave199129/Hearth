@@ -191,7 +191,7 @@ recoverable, so support is deliberately gated on that.
 
 | Status | Regions |
 |---|---|
-| Resource data present | US, UK — `backend/app/safety2/resources/regions/` |
+| Resource data present | US, UK, India — `backend/app/safety2/resources/regions/` |
 | Planned next | Canada, Australia, Ireland, New Zealand |
 | Long-term | Markets with the highest measured need — see below |
 

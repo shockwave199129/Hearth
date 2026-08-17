@@ -1,0 +1,41 @@
+# Region-specific resources layered on top of global.yaml when the
+# profile's region is "in" (Book Vol 6 Ch 7). Public, well-known services.
+last_updated: "2026-08-17"
+source_notes: >-
+  Every entry below re-checked against the operating organisation's own
+  official page on 2026-08-17: telemanas.mohfw.gov.in / pib.gov.in
+  (Tele-MANAS 14416 — toll-free, 24/7, all States/UTs; also listed as
+  1-800-891-4416), pib.gov.in / depwd.gov.in (KIRAN 1800-599-0019 —
+  24x7 toll-free Mental Health Rehabilitation Helpline, Ministry of
+  Social Justice & Empowerment), wcd.gov.in (Women Helpline 181 —
+  toll-free 24-hour service under MWCD; WCD notes it is operational in
+  all States/UTs except West Bengal). Numbers matched; no corrections
+  were needed.
+
+  This is contact-accuracy verification only. It is NOT the clinical review
+  required before real-user exposure — whether these are the right resources
+  to surface, for which categories, and with what wording, still NEEDS
+  REVIEW by a qualified safety/clinical professional (Vol 6 Ch 7). See
+  docs/compliance.md.
+resources:
+  - id: in_tele_manas
+    title: Tele-MANAS
+    description: "Call 14416 (or 1-800-891-4416), free, 24/7 mental health support across India."
+    contact: "14416"
+    region: in
+    category: acute_self_risk
+    verified: true
+  - id: in_kiran_helpline
+    title: KIRAN Mental Health Helpline
+    description: "Call 1800-599-0019, free 24/7 mental health rehabilitation helpline."
+    contact: "1800-599-0019"
+    region: in
+    category: acute_self_risk
+    verified: true
+  - id: in_women_helpline_181
+    title: Women Helpline
+    description: "Call 181, free 24/7 support for women facing violence or distress."
+    contact: "181"
+    region: in
+    category: disclosed_harm_to_others
+    verified: true

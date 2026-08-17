@@ -154,12 +154,12 @@ on the ordinary conversational path, which is already barred from claiming
 humanity. Answering it with a capability disclaimer would be unkind and
 isn't required.
 
-### 3. Regional crisis data covers two countries
+### 3. Regional crisis data covers three countries
 
-`backend/app/safety2/resources/regions/` contains `us.yaml` and `uk.yaml`.
-Any market beyond those launches without verified local crisis resources,
-which is not acceptable. Adding a region means *verifying* current emergency
-and helpline numbers, not transcribing a web page.
+`backend/app/safety2/resources/regions/` contains `us.yaml`, `uk.yaml`, and
+`in.yaml`. Any market beyond those launches without verified local crisis
+resources, which is not acceptable. Adding a region means *verifying*
+current emergency and helpline numbers, not transcribing a web page.
 
 ### 4. Clinician review not done
 
