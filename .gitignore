@@ -36,8 +36,12 @@ backend/.env
 # scripts/build_backend.sh and app/version.py). Not a source of truth.
 backend/app/VERSION
 
-# Node (frontend/, desktop/ each have their own too, this covers the rest)
+# Node (frontend/, desktop/, website/ each have their own too, this covers the rest)
 node_modules/
+
+# Astro product site build output + synced brand copies
+website/dist/
+website/public/brand/
 
 # local files. project-plan.md used to live here — it is now tracked at
 # docs/project-plan.md, since the code cites it normatively (grep for it)
