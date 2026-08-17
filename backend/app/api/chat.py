@@ -120,6 +120,16 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 )
                 continue
 
+            # Pipeline.respond returns an empty transcript AND an empty reply
+            # when the VAD found no speech in the buffer (a television, a fan,
+            # a door). Reported as its own frame rather than as a turn: the
+            # client must drop its optimistic pending turn instead of
+            # rendering an exchange that never happened, and inventing a reply
+            # to background noise would be worse than saying nothing.
+            if not transcript and not reply_text:
+                await ws.send_text(json.dumps({"type": "no_speech"}))
+                continue
+
             has_audio = reply_audio is not None
             await ws.send_text(
                 json.dumps(

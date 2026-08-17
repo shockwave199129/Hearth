@@ -37,10 +37,28 @@ class ShortTermMemory:
         if next_turn_id is not None:
             self._next_turn_id = next_turn_id
 
-    def add_turn(self, user_text: str, assistant_text: str) -> int:
+    def add_turn(
+        self, user_text: str, assistant_text: str, *, speaker_verified: bool | None = None
+    ) -> int:
+        """``speaker_verified`` is a tri-state from `app.voice.verification`:
+        True when this utterance matched the enrolled voiceprint, False when
+        it did not, and **None** when nothing was checked — typed input, no
+        enrollment, no model, or too little speech to score honestly.
+
+        Only an explicit False suppresses memory formation (see
+        `memory.formation` and `growth.engine`). None must behave exactly as
+        this app behaved before verification existed, which is why it is the
+        default rather than False.
+        """
         turn_id = self._next_turn_id
         self._next_turn_id += 1
-        self.messages.append({"role": "user", "content": user_text, "turn_id": turn_id, "reply_to": None})
+        self.messages.append({
+            "role": "user",
+            "content": user_text,
+            "turn_id": turn_id,
+            "reply_to": None,
+            "speaker_verified": speaker_verified,
+        })
         self.messages.append({"role": "assistant", "content": assistant_text, "turn_id": turn_id, "reply_to": turn_id})
         if len(self.messages) > SHORT_TERM_WINDOW:
             self._summarize_oldest()

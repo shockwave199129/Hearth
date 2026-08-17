@@ -1,0 +1,60 @@
+/* The CC-BY-4.0 credit has to be visible rather than buried in a list, so it
+   gets its own bordered block above the plain inventory. */
+.about__attribution {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  background: var(--color-bg-elevated);
+}
+
+.about__attribution p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--color-text);
+}
+
+.about__attribution p + p {
+  margin-top: var(--space-2);
+}
+
+.about__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.about__list li {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr) auto;
+  gap: var(--space-3);
+  align-items: baseline;
+  font-size: var(--fs-sm);
+}
+
+@media (max-width: 34rem) {
+  .about__list li {
+    grid-template-columns: 1fr;
+    gap: var(--space-1, 2px);
+  }
+}
+
+.about__list--muted {
+  opacity: 0.65;
+}
+
+.about__name {
+  color: var(--color-text);
+}
+
+.about__purpose {
+  color: var(--color-text-muted);
+}
+
+.about__license {
+  color: var(--color-text-faint);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}

@@ -183,6 +183,16 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
     [settleTurn],
   );
 
+  /** Remove the reserved turn entirely, leaving no trace in the transcript.
+   * Used when the server reports the captured buffer held no speech: there
+   * was no exchange, so an empty or errored turn would be misleading. */
+  const discardTurn = useCallback(() => {
+    const id = pendingTurnIdRef.current;
+    pendingTurnIdRef.current = null;
+    if (id === null) return;
+    setLiveTurns((prev) => prev.filter((turn) => turn.id !== id));
+  }, []);
+
   const failTurn = useCallback(
     (message: string) => {
       settleTurn(
@@ -360,6 +370,15 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
             console.error("[useCompanionSocket] bad JSON frame", err);
             return;
           }
+          if (meta.type === "no_speech") {
+            // The server's VAD found no speech in what we captured — a TV, a
+            // fan, a door. Drop the optimistic pending turn rather than
+            // rendering an exchange that never happened.
+            pendingMetaRef.current = null;
+            setIsThinking(false);
+            discardTurn();
+            return;
+          }
           if (meta.type === "error") {
             const stranded = pendingMetaRef.current;
             pendingMetaRef.current = null;
@@ -411,7 +430,7 @@ export function useCompanionSocket(url: string): UseCompanionSocketResult {
       void playbackCtxRef.current?.close();
       playbackCtxRef.current = null;
     };
-  }, [url, playReply, resolveTurn, failTurn]);
+  }, [url, playReply, resolveTurn, failTurn, discardTurn]);
 
   // Both senders record the turn first, then check the socket, so a send that
   // loses a readyState race says so in the log instead of vanishing.

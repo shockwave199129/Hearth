@@ -87,6 +87,48 @@ def list_turns(
         conn.close()
 
 
+def export_all(user_id: str) -> list[dict]:
+    """Every stored turn, oldest first — the whole transcript for
+    ``app.data_export``.
+
+    Deliberately unpaginated, unlike ``list_turns``: an export is the one
+    caller that *should* dump everything, and it writes to a file rather
+    than into a model's context. Oldest-first because an exported
+    transcript is read top-to-bottom, where the Talk page reads newest-first.
+
+    A row that fails to decrypt is kept as a placeholder rather than
+    dropped or raised. Losing one damaged row silently would make the
+    export quietly incomplete, and aborting would mean a single bad row
+    denies the user every other row they own.
+    """
+    conn = get_connection(CHAT_HISTORY_DB_PATH)
+    try:
+        rows = conn.execute(
+            """SELECT id, session_id, turn_id, role, content, created_at FROM chat_history
+               WHERE user_id = ? ORDER BY id ASC""",
+            (user_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    out: list[dict] = []
+    for r in rows:
+        try:
+            content = decrypt(r[4].encode("latin1"))
+        except Exception:
+            content = "(this turn could not be decrypted)"
+        out.append(
+            {
+                "id": r[0],
+                "session_id": r[1],
+                "turn_id": r[2],
+                "role": r[3],
+                "content": content,
+                "created_at": r[5],
+            }
+        )
+    return out
+
+
 def get_turn(user_id: str, row_id: int) -> dict | None:
     conn = get_connection(CHAT_HISTORY_DB_PATH)
     try:
@@ -128,6 +170,27 @@ def delete_all_for_user(user_id: str) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def last_activity_at(user_id: str) -> datetime | None:
+    """Most recent turn timestamp for a profile, or None if it has never had a
+    conversation. Drives the voiceprint retention schedule
+    (`app.voice.retention`), which needs "last interaction" and nothing more —
+    hence MAX(created_at) rather than reading rows."""
+    conn = get_connection(CHAT_HISTORY_DB_PATH)
+    try:
+        row = conn.execute(
+            "SELECT MAX(created_at) FROM chat_history WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None or not row[0]:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(row[0]))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def session_start_timestamps(user_id: str) -> list[datetime]:

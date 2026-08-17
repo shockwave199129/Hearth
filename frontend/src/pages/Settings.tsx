@@ -8,6 +8,8 @@ import { useSafetyStatus } from "../hooks/useSafetyStatus";
 import { MemoryPanel } from "../components/MemoryPanel";
 import { SkillsPanel } from "../components/SkillsPanel";
 import { ProfilesPanel } from "../components/ProfilesPanel";
+import { VoiceEnrollmentPanel } from "../components/VoiceEnrollmentPanel";
+import { AboutPanel } from "../components/AboutPanel";
 import { getStoredTheme, setStoredTheme, type Theme } from "../lib/theme";
 import { friendlyActionError } from "../lib/errors";
 import { backendFetch } from "../lib/backendFetch";
@@ -21,6 +23,21 @@ import {
   type PreferredVoice,
   type VoiceStyleId,
 } from "../lib/voiceStyles";
+
+/** Response of POST /api/data/export — see backend/app/data_export.py.
+ * `incomplete` is keyed by store with a human-readable reason, and is empty
+ * on a clean export; it is surfaced rather than swallowed because a
+ * partial export of "all your data" must not look like a complete one. */
+type DataExportResult = {
+  path: string;
+  counts: {
+    long_term_memories: number;
+    episodic_memories: number;
+    semantic_memories: number;
+    transcript_messages: number;
+  };
+  incomplete: Record<string, string>;
+};
 
 export function Settings() {
   const { status, error } = useTierStatus();
@@ -50,6 +67,9 @@ export function Settings() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(notifications.isEnabledPreference);
   const [dataResetBusy, setDataResetBusy] = useState(false);
   const [dataResetError, setDataResetError] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportResult, setExportResult] = useState<DataExportResult | null>(null);
 
   const handleThemeChange = (next: Theme) => {
     setTheme(next);
@@ -124,6 +144,33 @@ export function Settings() {
     notifications.setEnabledPreference(next);
     setNotificationsEnabled(next);
     showAlert({ type: "success", message: next ? "Desktop notifications on." : "Desktop notifications off." });
+  };
+
+  const exportData = async () => {
+    // Confirmed rather than one-click: the export is readable by anyone who
+    // can read the folder, unlike everything Hearth normally writes.
+    if (
+      !window.confirm(
+        "This writes your profile, memories, and full conversation to plain files in your home folder. They are NOT encrypted — anyone who can open that folder can read them. Continue?",
+      )
+    ) {
+      return;
+    }
+    setExportBusy(true);
+    setExportError(null);
+    try {
+      const response = await backendFetch("/api/data/export", { method: "POST" });
+      if (!response.ok) throw new Error(`status ${response.status}`);
+      const result = (await response.json()) as DataExportResult;
+      setExportResult(result);
+      showAlert({ type: "success", message: "Your data was exported." });
+    } catch (err) {
+      const message = friendlyActionError(err, "Settings.exportData", "Couldn't export your data.");
+      setExportError(message);
+      showAlert({ type: "error", message });
+    } finally {
+      setExportBusy(false);
+    }
   };
 
   const resetLocalData = async () => {
@@ -508,6 +555,62 @@ export function Settings() {
         ) : (
           !safetyError && <p className="settings__hint">Reading safety status…</p>
         )}
+      </section>
+
+      <section className="settings__section">
+        <h2>Your voice</h2>
+        <VoiceEnrollmentPanel />
+      </section>
+
+      <section className="settings__section">
+        <h2>Your data</h2>
+        <p className="settings__hint">
+          Export writes your profile, everything {profile?.companion_name ?? "your companion"} remembers,
+          and your whole conversation to plain files in your home folder — yours to keep, move, or open
+          without Hearth. Nothing is removed from the app, and nothing is uploaded anywhere.
+        </p>
+        <p className="settings__hint">
+          Those files are not encrypted, unlike the copies Hearth keeps. Anyone who can open the folder
+          can read them.
+        </p>
+        <div className="settings__actions">
+          <button className="settings__button" onClick={() => void exportData()} disabled={exportBusy}>
+            {exportBusy ? "Exporting…" : "Export my data"}
+          </button>
+        </div>
+        {exportError && <p className="settings__error">{exportError}</p>}
+        {exportResult && (
+          <>
+            <div className="settings__field">
+              <span className="settings__field-label">Saved to</span>
+              <p className="settings__path">{exportResult.path}</p>
+            </div>
+            <dl className="settings__grid">
+              <div>
+                <dt>Messages</dt>
+                <dd>{exportResult.counts.transcript_messages}</dd>
+              </div>
+              <div>
+                <dt>Memories</dt>
+                <dd>
+                  {exportResult.counts.long_term_memories +
+                    exportResult.counts.episodic_memories +
+                    exportResult.counts.semantic_memories}
+                </dd>
+              </div>
+            </dl>
+            {Object.entries(exportResult.incomplete).map(([key, reason]) => (
+              <p key={key} className="settings__error">
+                Part of your data couldn't be exported ({key.replace(/_error$/, "")}): {reason}
+              </p>
+            ))}
+          </>
+        )}
+      </section>
+
+      <section className="settings__section">
+        <h2>About</h2>
+        <AboutPanel />
       </section>
 
       <section className="settings__section settings__section--danger">

@@ -175,6 +175,70 @@ Crisis escalation is the one path where data leaves the device, so it needs
 both to actually work and to match exactly what
 [`privacy.md`](privacy.md) promises about consent.
 
+### 6. Biometric data — new category, added by voice verification
+
+Optional speaker verification (`app/voice/`) stores a voiceprint: a 256-dim
+embedding derived from the user's voice and used to identify them. That is a
+**biometric identifier**, which is a different legal category from anything
+else in this document.
+
+The statutes that attach, all needing verification with counsel:
+
+- **Illinois BIPA** — written consent before collection, a published
+  retention-and-destruction schedule, no sale or profit. It is the
+  most-litigated US biometric statute and has a private right of action with
+  statutory damages per violation. It applies to *collection and possession*,
+  so keeping the template local and never transmitting it is a strong
+  mitigation, not an exemption.
+- **Texas CUBI** and **Washington HB 1493** — consent and retention duties in
+  similar shape, enforced by the state rather than privately.
+- **GDPR Art. 9** — a voiceprint used for unique identification is
+  special-category data, needing an Art. 9 condition (here: explicit
+  consent), not merely an Art. 6 basis.
+
+What the implementation does about it, so a reviewer can check rather than
+assume:
+
+| Requirement | How it is met |
+|---|---|
+| Written consent **before** collection | `POST /api/voice/consent` records a server-stamped agreement; `verification.enroll` refuses without one. Enforced in the domain logic, not just the route, so no code path can collect a template first. |
+| Consent is to specific wording | The copy lives in one reviewable constant, `config.VOICE_BIOMETRIC_CONSENT_TEXT`, versioned by `VOICE_BIOMETRIC_CONSENT_VERSION` and served to the UI rather than duplicated in it. A version bump re-prompts instead of inheriting agreement to different text. |
+| Consent is revocable | Deleting the voiceprint withdraws it (`consent.revoke`), so re-enrolling asks again. |
+| Published retention schedule | privacy.md "How long it's kept, and when it's destroyed", and the in-app consent text. |
+| Adherence to that schedule | `app/voice/retention.py` destroys at the earlier of purpose-satisfied (user deletion) or `VOICEPRINT_RETENTION_DAYS` (1095) from the last conversation. Enforced on profile activation and on reading enrollment status. |
+| No sale, lease, trade, or profit | Nothing leaves the device; there is no account, server, or telemetry. |
+| Purpose limitation | Used only to decide whether a turn shapes memory. Never to gate access, and never to identify *which* profile a voice belongs to — verification is one-to-one against the active profile only. |
+| Encrypted at rest | Fernet, inside the SQLCipher profile DB (`voiceprints` table) |
+| Never leaves the device | Excluded from crash reports; excluded from the plaintext data export, which carries only enrollment metadata |
+| Deletable independently | `DELETE /api/voice/enrollment`, exposed in Settings |
+| Destroyed with the profile | Purged by the cascade in `api/profile.py` |
+| Feature is removable | Weights are optional; absent them, nothing is collected and the voice path behaves as it did before |
+
+Each row above is pinned by a test in
+[`test_voice_compliance.py`](../backend/tests/test_voice_compliance.py) — a
+failure there means Hearth is collecting or keeping a biometric identifier it
+has no record of permission for, not that a test needs relaxing.
+
+**The retention schedule has one honest limitation.** There is no background
+service, so the time-based destruction happens on the next profile activation
+rather than on the day it falls due. A voiceprint belonging to someone who
+never reopens Hearth stays encrypted on their own disk past its deadline. That
+is documented in privacy.md rather than hidden, and the alternative — a daemon
+running when the user did not ask for it — would undercut the
+no-engagement-optimization invariant for a worse privacy trade.
+
+**Two things are deliberately *not* claimed.** Verification never suppresses
+the safety path — a crisis disclosure from an unrecognised voice is still
+handled — and it never discards audio, because a distressed, hoarse, or
+crying voice drifts away from a calm enrollment sample exactly when it
+matters most. See `app/voice/verification.py`.
+
+**Still open:** the shipped match threshold was calibrated on clean read
+speech (LibriSpeech), not on real users in real rooms, and
+`scripts/calibrate_speaker_threshold.py` has not yet been run against a
+realistic corpus. Until it has, the false-rejection rate for a distressed
+voice is unmeasured. That is a gate item below, not a tuning task.
+
 ## Launch gate
 
 Real-user exposure should be blocked until all of the following hold. This
@@ -218,11 +282,49 @@ missing, so nobody has to re-derive it.
       Audited frontend, prompts, skills, installer. Two stale
       "emotional-support voice companion" strings fixed in installer-ui.
       No store listing exists yet — re-check when one is written.
+[ ] Speaker-verification threshold calibrated on realistic audio
+      BLOCKED on a corpus. The default (0.40) gives a 0% false-rejection
+      rate on LibriSpeech read speech, which is the easy case. The rate for
+      a tired, hoarse, crying or across-the-room voice is UNMEASURED, and
+      false rejection is the error that costs the user. Record a corpus
+      including those cases and run
+      scripts/calibrate_speaker_threshold.py. Alternative that also closes
+      this: ship 1.0 without the voice models, since the feature is
+      optional and absent weights collect nothing.
+[~] Biometric consent + retention language reviewed by counsel
+      Mechanism BUILT and tested: consent recorded before collection and
+      enforced in verification.enroll (not just the route), versioned
+      wording served from one constant, revocation on deletion, and a
+      published 3-year retention schedule enforced in voice/retention.py.
+      See §6 for the requirement-by-requirement table.
+      REMAINING, and it needs a lawyer rather than a commit: review of the
+      consent *wording* in config.VOICE_BIOMETRIC_CONSENT_TEXT and of the
+      retention section in privacy.md, plus confirmation that a
+      3-year/last-interaction bound and activation-time enforcement satisfy
+      the jurisdictions we ship to. Same alternative applies: not shipping
+      the voice models makes this moot for 1.0.
+[x] CC-BY-4.0 attribution for the speaker model shown in-app
+      Settings → About renders it (frontend/src/components/AboutPanel.tsx)
+      from GET /api/about, which credits the model only when it is actually
+      installed — attribution attaches to what is distributed. Pinned by
+      test_api_routes.py::test_about_credits_the_cc_by_model_only_when_it_
+      is_installed. Re-check when a store listing or marketing site exists,
+      which is the other place this obligation lands.
 ```
 
-`[~]` means partially done with the remainder named. Two items cannot be
-closed from here: the clinical review (needs a licensed professional) and
-end-to-end escalation (needs a provider decision and credentials).
+`[~]` means partially done with the remainder named. Items that cannot be
+closed from here: the clinical review (needs a licensed professional),
+end-to-end escalation (needs a provider decision and credentials), and two
+voice-verification items (a recorded corpus, and a lawyer to review consent
+wording whose mechanism is now built).
+
+The remaining voice items share one escape hatch worth stating plainly,
+because it is probably still the right call for 1.0: **speaker verification is
+optional and ships no weights by default.** An install that never runs
+`scripts/fetch_voice_models.py` collects no biometric data, so both items are
+satisfied by not shipping the models with 1.0 and treating enrollment as a
+post-1.0 feature. Choosing to ship it instead means closing both first — see
+[`roadmap-v1.md`](roadmap-v1.md)'s "Keep out of 1.0".
 
 The last item includes app-store descriptions and any marketing site — the
 places most likely to reintroduce a treatment claim after the code was

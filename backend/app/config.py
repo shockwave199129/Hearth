@@ -221,6 +221,83 @@ TTS_PARLER_DIR = TTS_MODELS_DIR / "parler-tts-tiny-v1"
 TTS_KOKORO_REPO = "NeuML/kokoro-fp16-onnx"
 TTS_KOKORO_DIR = TTS_MODELS_DIR / "kokoro-fp16-onnx"
 
+# Voice-input analysis models (app/voice/) — both optional, fetched by
+# scripts/fetch_voice_models.py. Absent weights degrade to the pre-existing
+# behaviour: VAD fails open (every buffer treated as speech), speaker
+# verification fails closed (every turn "unchecked", never "verified").
+VOICE_MODELS_INSTALL_DIR = MODELS_DIR / "voice"
+
+
+def resolve_voice_model(filename: str) -> Path:
+    """Locate one optional voice model, mirroring resolve_nlp_models_dir's
+    order: ``VOICE_MODELS_DIR`` env → install path → repo checkout.
+
+    Returns the install path when nothing exists yet, rather than None, so
+    callers can log a concrete "not present at ..." location — both consumers
+    already treat a missing file as "feature unavailable", so an
+    always-a-Path return keeps them simpler than an Optional would.
+    """
+    candidates: list[Path] = []
+    env = os.environ.get("VOICE_MODELS_DIR", "").strip()
+    if env:
+        candidates.append(Path(env).expanduser() / filename)
+    candidates.append(VOICE_MODELS_INSTALL_DIR / filename)
+    # Dev: repo root is the parent of backend/ when running from source, which
+    # is where scripts/fetch_voice_models.py puts them by default.
+    if not getattr(sys, "frozen", False):
+        candidates.append(BACKEND_DIR.parent / "models" / "voice" / filename)
+    for path in candidates:
+        if path.is_file():
+            return path
+    return VOICE_MODELS_INSTALL_DIR / filename
+
+
+VAD_MODEL_PATH = resolve_voice_model("silero_vad.onnx")
+SPEAKER_MODEL_PATH = resolve_voice_model("voxceleb_resnet34_LM.onnx")
+# Cosine-similarity floor for "this is the enrolled speaker". Deliberately
+# below the measured knee — false rejection is the dangerous direction here.
+# See app/voice/verification.py's module docstring before changing it, and
+# re-run scripts/calibrate_speaker_threshold.py rather than guessing.
+SPEAKER_MATCH_THRESHOLD = float(os.environ.get("SPEAKER_MATCH_THRESHOLD", "0.40"))
+
+# --- Biometric consent and retention (docs/compliance.md §6) ----------------
+#
+# A voiceprint is a biometric identifier, and BIPA-style statutes require
+# informed written consent *before* collection plus a published retention and
+# destruction schedule. The consent wording lives here, in one place, for two
+# reasons: counsel reviews one string rather than hunting through JSX, and the
+# version recorded against a profile maps to known text forever after.
+#
+# **Bump VOICE_BIOMETRIC_CONSENT_VERSION whenever the text changes.** A
+# profile whose recorded version no longer matches is treated as not having
+# consented to the current wording and is re-prompted — agreement to earlier
+# wording is not agreement to this one.
+VOICE_BIOMETRIC_CONSENT_VERSION = "2026-08-17.1"
+VOICE_BIOMETRIC_CONSENT_TEXT = (
+    "Voice recognition works by storing a voiceprint: a set of numbers "
+    "describing how your voice sounds. It is not a recording and cannot be "
+    "played back, but it can identify you, which makes it biometric "
+    "information.\n\n"
+    "If you turn this on:\n"
+    "• The voiceprint is created from recordings you make here, encrypted, "
+    "and kept only on this device. It is never uploaded, never included in a "
+    "data export, and never shared or sold.\n"
+    "• It is used for one purpose: deciding whether the person speaking is "
+    "you, so that someone else talking near your microphone does not become "
+    "part of what {companion} remembers about you.\n"
+    "• It never blocks anyone from using {companion}, and it is not proof of "
+    "who is speaking.\n"
+    "• You can delete it at any time in Settings. It is deleted "
+    "automatically if you delete your profile, and also if you do not use "
+    "{companion} for {retention_years} years.\n\n"
+    "You do not have to turn this on, and {companion} works fully without it."
+)
+# BIPA's outer bound is the earlier of "purpose satisfied" or three years from
+# the last interaction. Purpose-satisfied is handled by explicit deletion; this
+# is the time bound. Enforced on profile activation — see
+# app/voice/retention.py, which is honest about what a local app can promise.
+VOICEPRINT_RETENTION_DAYS = int(os.environ.get("VOICEPRINT_RETENTION_DAYS", "1095"))
+
 LLAMA_SERVER_BIN = os.environ.get("LLAMA_SERVER_BIN", "llama-server")
 LLM_SERVER_HOST = "127.0.0.1"
 LLM_SERVER_PORT = 48174

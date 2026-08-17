@@ -124,6 +124,43 @@ CREATE TABLE IF NOT EXISTS chat_history (
 );
 """
 
+# Speaker-verification templates (app/voice/store.py). `embedding` is a
+# Fernet-encrypted JSON float array, same at-rest treatment as chat content —
+# it is biometric data, see docs/compliance.md. One row per profile;
+# `model_id` is kept because a template only means anything to the model that
+# produced it. Purged by the profile-delete cascade in api/profile.py.
+VOICEPRINTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS voiceprints (
+    user_id TEXT PRIMARY KEY,
+    embedding TEXT NOT NULL,
+    sample_count INTEGER NOT NULL,
+    dim INTEGER NOT NULL,
+    model_id TEXT NOT NULL,
+    enrolled_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+# Written consent for biometric collection, kept in its own table rather than
+# as columns on `profiles`.
+#
+# Three reasons it is separate. It is a distinct legal artifact from the 18+
+# attestation and is likely to be produced on its own for a BIPA-style
+# records request. Its absence must be the default for every existing profile,
+# which a missing row expresses better than a nullable column. And revocation
+# is a delete, so "no row" is unambiguously "no consent on record" — there is
+# no state where a stale timestamp could be read as live consent.
+#
+# `consent_version` records *which wording* was agreed to, so changing the
+# copy re-prompts rather than silently inheriting agreement to different text.
+VOICEPRINT_CONSENT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS voiceprint_consent (
+    user_id TEXT PRIMARY KEY,
+    consented_at TEXT NOT NULL,
+    consent_version TEXT NOT NULL
+);
+"""
+
 # --- Legacy single-row `profile` table, pre-multi-profile (Phases 1-5).
 # Only ever read, by _migrate_legacy_singleton_profile, and never created
 # here: installs that have one made it under an older build, and its shape
@@ -258,6 +295,8 @@ def init_schema(conn) -> None:
     conn.execute(ESCALATIONS_SCHEMA)
     conn.execute(CHAT_HISTORY_SCHEMA)
     conn.execute(RELATIONSHIP_PROFILES_SCHEMA)
+    conn.execute(VOICEPRINTS_SCHEMA)
+    conn.execute(VOICEPRINT_CONSENT_SCHEMA)
     _ensure_columns(conn, "profiles", _PROFILES_TEXT_INPUT_COLUMNS)
     conn.commit()
     try:

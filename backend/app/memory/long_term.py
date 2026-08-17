@@ -111,6 +111,42 @@ def get(mem_id: str, user_id: str) -> dict | None:
     }
 
 
+def export_all(user_id: str) -> list[dict]:
+    """Every flat memory for a profile with its **full** text, for
+    ``app.data_export``.
+
+    ``list_memories`` deliberately truncates to a 40-character label so a
+    listing can't dump the store into a model's context; an export has the
+    opposite requirement, so it reads the documents directly rather than
+    calling ``get`` per id (which would be one Chroma round-trip per
+    memory). Unreadable documents are kept as placeholders for the same
+    reason as ``chat_history.export_all``.
+    """
+    results = get_collection().get(where={"user_id": user_id})
+    ids = results.get("ids") or []
+    docs = results.get("documents") or []
+    metas = results.get("metadatas") or []
+    out: list[dict] = []
+    for mem_id, doc, meta in zip(ids, docs, metas):
+        if doc is None or meta is None:
+            continue
+        try:
+            text = decrypt(doc.encode("latin1"))
+        except Exception:
+            text = "(this memory could not be decrypted)"
+        out.append(
+            {
+                "id": mem_id,
+                "category": meta.get("category", ""),
+                "text": text,
+                # `create`/`update` stamp `updated_at`; there is no separate
+                # creation timestamp in this store to export.
+                "updated_at": meta.get("updated_at"),
+            }
+        )
+    return out
+
+
 def search(query: str, user_id: str, k: int = 5) -> list[dict]:
     results = get_collection().query(
         query_embeddings=[embed(query)], n_results=k, where={"user_id": user_id}

@@ -43,6 +43,10 @@ from app.evaluation.worker import EvaluationWorker
 from app.growth.engine import GrowthEngine
 from app.memory2.retrieval import retrieve as memory2_retrieve
 from app.stt.moonshine_engine import MoonshineEngine
+from app.voice import retention as voice_retention
+from app.voice import verification as speaker_verification
+from app.voice.embedder import SpeakerEmbedder
+from app.voice.vad import SileroVad
 from app.tts.tts_engines import get_tts_engine
 from app.safety2.audit import purge_expired
 
@@ -110,6 +114,11 @@ class Pipeline:
         self.llm_adapter = LlmAdapter(self.llm)
 
         self.stt = MoonshineEngine(self.tier.stt_model)
+        # Optional voice-input analysis (app/voice/). Constructed always and
+        # cheaply — both defer their onnxruntime session until a voice turn,
+        # and report themselves unavailable when the weights are absent.
+        self.vad = SileroVad()
+        self.speaker_embedder = SpeakerEmbedder()
         self.tts = get_tts_engine(self.tier)
         self.scheduler = CognitiveScheduler()
         self.prompt_builder = PromptBuilder()
@@ -143,6 +152,11 @@ class Pipeline:
         # Restart resumes it here from persistent storage, not the runtime
         # snapshot (that's for MindState/conversation only).
         self.relationship_profile = get_or_create_relationship_profile(profile.user_id)
+        # Voiceprint retention runs on activation because there is no daemon:
+        # nothing executes while Hearth is closed, so this is the first moment
+        # an expired biometric template can be destroyed — and it happens
+        # before any turn could use it. See app/voice/retention.py.
+        voice_retention.enforce(profile.user_id)
 
     def new_session_memory(self) -> ShortTermMemory:
         memory = ShortTermMemory(self.llm)
@@ -157,10 +171,47 @@ class Pipeline:
         return memory
 
     def respond(self, audio: np.ndarray, memory: ShortTermMemory) -> tuple[str, str, np.ndarray | None, int, int]:
-        """Voice input: transcribe, then everything else is shared with
-        typed input via _handle_turn."""
+        """Voice input: gate on speech, verify the speaker, transcribe, then
+        everything else is shared with typed input via _handle_turn.
+
+        The gate returns ``("", "", None, 0, 0)`` when the buffer holds no
+        speech, which the websocket turns into a `no_speech` frame rather
+        than a turn. Without it, a television or a passing car clears the
+        RMS endpointer, gets transcribed as whatever it sounds closest to,
+        and receives a genuine reply that the user never asked for — and it
+        is stored as something they said.
+
+        Speaker verification runs here and *only* labels the turn. It cannot
+        stop the turn: see app/voice/verification.py on why a low score must
+        never suppress input.
+        """
+        vad = self.vad.assess(audio)
+        if not vad.has_speech:
+            logger.info(
+                "ignoring a captured buffer with no speech (ratio %.3f)", vad.speech_ratio
+            )
+            return "", "", None, 0, 0
+
+        # speech_seconds, not buffer length: a ten-second recording holding
+        # half a second of speech is a too-short sample, and scoring it
+        # anyway is how a verifier starts rejecting its own user.
+        speech_seconds = vad.speech_seconds if vad.available else None
+        verdict = speaker_verification.verify(
+            self.profile.user_id,
+            audio,
+            self.speaker_embedder,
+            speech_seconds=speech_seconds,
+        )
+        if verdict.decision == "unrecognized":
+            logger.info(
+                "turn scored below the speaker threshold (%.3f < %.2f) — answering it, "
+                "but not forming memories from it",
+                verdict.score if verdict.score is not None else float("nan"),
+                verdict.threshold,
+            )
+
         transcript = self.stt.transcribe(audio)
-        return self._handle_turn(transcript, memory)
+        return self._handle_turn(transcript, memory, speaker_verified=verdict.verified)
 
     def respond_to_text(self, text: str, memory: ShortTermMemory) -> tuple[str, str, np.ndarray | None, int, int]:
         """Typed input: no STT involved, otherwise identical turn handling
@@ -198,9 +249,13 @@ class Pipeline:
         return None, 0
 
     def _commit_turn(
-        self, memory: ShortTermMemory, transcript: str, reply_text: str
+        self,
+        memory: ShortTermMemory,
+        transcript: str,
+        reply_text: str,
+        speaker_verified: bool | None = None,
     ) -> int:
-        turn_id = memory.add_turn(transcript, reply_text)
+        turn_id = memory.add_turn(transcript, reply_text, speaker_verified=speaker_verified)
         chat_history.record_turn(self.profile.user_id, memory.session_id, turn_id, "user", transcript)
         turn_db_id = chat_history.record_turn(
             self.profile.user_id, memory.session_id, turn_id, "assistant", reply_text
@@ -306,7 +361,12 @@ class Pipeline:
             logger.exception("safety-path emotion classification failed — continuing without it")
             return "unknown", 0.0
 
-    def _handle_turn(self, transcript: str, memory: ShortTermMemory) -> tuple[str, str, np.ndarray | None, int, int]:
+    def _handle_turn(
+        self,
+        transcript: str,
+        memory: ShortTermMemory,
+        speaker_verified: bool | None = None,
+    ) -> tuple[str, str, np.ndarray | None, int, int]:
         purge_expired()
         emotion, emotion_confidence = self._current_message_emotion(transcript)
         safety = self.safety_worker.assess(
@@ -320,12 +380,12 @@ class Pipeline:
             llm=self.llm_adapter,
         )
         if safety.route != "ordinary":
-            return self._respond_to_safety(transcript, safety, memory)
+            return self._respond_to_safety(transcript, safety, memory, speaker_verified)
 
         # Ordered after safety deliberately: someone in crisis who also asks
         # "are you even real" needs the safety response, not a disclosure.
         if identity.is_identity_question(transcript):
-            return self._respond_to_identity(transcript, memory)
+            return self._respond_to_identity(transcript, memory, speaker_verified)
 
         task = self.scheduler.schedule(transcript, self.mind_state, safety, session_summary=memory.session_summary)
         self.nlp_workers.run(task.workers, transcript, self.mind_state)
@@ -371,7 +431,7 @@ class Pipeline:
         reply_audio, sample_rate = (
             self._synthesize_reply(reply_text) if self.profile.speak_replies else (None, 0)
         )
-        turn_db_id = self._commit_turn(memory, transcript, reply_text)
+        turn_db_id = self._commit_turn(memory, transcript, reply_text, speaker_verified)
         return transcript, reply_text, reply_audio, sample_rate, turn_db_id
 
     def _relationship_state(self):
@@ -406,7 +466,7 @@ class Pipeline:
         return f"If it helps, {top['title']} is available."
 
     def _respond_to_identity(
-        self, transcript: str, memory: ShortTermMemory
+        self, transcript: str, memory: ShortTermMemory, speaker_verified: bool | None = None
     ) -> tuple[str, str, np.ndarray | None, int, int]:
         """Answer "are you real?" from authored text, bypassing the LLM.
 
@@ -423,11 +483,11 @@ class Pipeline:
         reply_audio, sample_rate = (
             self._synthesize_reply(reply_text) if self.profile.speak_replies else (None, 0)
         )
-        turn_db_id = self._commit_turn(memory, transcript, reply_text)
+        turn_db_id = self._commit_turn(memory, transcript, reply_text, speaker_verified)
         return transcript, reply_text, reply_audio, sample_rate, turn_db_id
 
     def _respond_to_safety(
-        self, transcript: str, safety, memory: ShortTermMemory
+        self, transcript: str, safety, memory: ShortTermMemory, speaker_verified: bool | None = None
     ) -> tuple[str, str, np.ndarray | None, int, int]:
         """Phase 4 safety response: bypass ordinary intervention scoring.
         Resource-backed (Vol 6 Ch7) rather than a single fixed string —
@@ -471,7 +531,7 @@ class Pipeline:
             logger.exception("failed to dual-write safety findings to evaluation log")
         self._update_relationship_snapshot(transcript, reply_text)
         reply_audio, sample_rate = self._synthesize_reply(reply_text)
-        turn_db_id = self._commit_turn(memory, transcript, reply_text)
+        turn_db_id = self._commit_turn(memory, transcript, reply_text, speaker_verified)
         return transcript, reply_text, reply_audio, sample_rate, turn_db_id
 
     def _checkin_prompt_line(self) -> str:

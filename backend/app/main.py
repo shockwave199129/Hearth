@@ -15,7 +15,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import chat, data, diagnostics, memory, profile, setup, skills, status
+from app.api import about, chat, data, diagnostics, memory, profile, setup, skills, status, voice
 from app.api.auth import require_api_token, token_matches
 from app.config import APP_HOST, APP_PORT
 from app.deps import get_pipeline_optional, set_pipeline
@@ -64,6 +64,8 @@ app.include_router(skills.router)
 app.include_router(chat.router)
 app.include_router(diagnostics.router)
 app.include_router(data.router)
+app.include_router(voice.router)
+app.include_router(about.router)
 
 
 @app.on_event("startup")

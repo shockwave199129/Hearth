@@ -15,6 +15,11 @@ backend/models/**/*.bin
 models/nlp/**/*.onnx
 models/nlp/**/*.json
 
+# Optional voice-input models (fetch via scripts/fetch_voice_models.py).
+# ~29 MB of third-party weights, digest-pinned in that script rather than
+# vendored — see docs/attributions.md for their licences.
+models/voice/*.onnx
+
 # PyInstaller build workdir — scripts/build_backend.sh/.ps1's --workpath.
 /.pyinstaller-build
 

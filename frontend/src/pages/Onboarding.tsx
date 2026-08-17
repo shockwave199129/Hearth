@@ -239,8 +239,15 @@ export function Onboarding() {
         {step === 4 && (
           <div className="onboarding__step">
             <h1>And how should I sound?</h1>
+            {/* docs/roadmap-v1.md 0.4: typing is a first-class path, not a
+                fallback for a missing microphone. Said here because this is
+                the step where someone forms the expectation that Hearth is a
+                voice-only app — and because voice *output* works fine with no
+                microphone, so this choice matters to a typist too. */}
             <p className="onboarding__hint">
-              This only changes the spoken voice — you can switch it any time in Settings.
+              You can talk out loud or type — both are normal, and plenty of people only ever type.
+              This picks the voice for replies that are spoken; you can change it, or turn speaking off
+              altogether, any time in Settings.
             </p>
             <div className="onboarding__field">
               <span>Voice</span>

@@ -106,7 +106,14 @@ class GrowthEngine:
         now: datetime | None = None,
     ) -> GrowthEngineResult:
         now = now or datetime.now(timezone.utc)
-        user_messages = [str(m.get("content", "")) for m in memory.messages if m.get("role") == "user"]
+        # `speaker_verified is False` excludes turns another person spoke
+        # (app.voice.verification) from forming episodic/semantic memory,
+        # matching memory.formation. None means unchecked and still forms.
+        user_messages = [
+            str(m.get("content", ""))
+            for m in memory.messages
+            if m.get("role") == "user" and m.get("speaker_verified") is not False
+        ]
         if not user_messages:
             return GrowthEngineResult(0, 0, 0, get_or_create_relationship_profile(user_id))
 

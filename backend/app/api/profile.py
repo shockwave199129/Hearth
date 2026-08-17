@@ -25,6 +25,7 @@ from app.onboarding.profile_store import (
 from app.pipeline import DEFAULT_PROFILE
 from app.relationship.profile_store import delete_relationship_profile
 from app.safety import crisis_detector, escalation
+from app.voice import store as voiceprint_store
 from app.safety2 import audit as safety_audit
 from app.tts.voice_styles import VOICE_STYLE_IDS, VOICES
 
@@ -185,6 +186,11 @@ def api_delete_profile(user_id: str, pipeline: Pipeline = Depends(get_pipeline))
     chat_history.delete_all_for_user(user_id)
     delete_relationship_profile(user_id)
     safety_audit.delete_entries(user_id)
+    # The voiceprint is biometric data (docs/compliance.md) — it must not
+    # outlive the profile it identifies. The audit log above was once missed
+    # from this cascade while the docstring claimed a full delete; a
+    # surviving biometric template would be the same bug with worse stakes.
+    voiceprint_store.delete(user_id)
 
     memory2_privacy.delete_all_memory(pipeline.growth_engine.store, user_id)
     if was_active:

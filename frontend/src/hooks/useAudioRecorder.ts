@@ -18,8 +18,13 @@ interface UseAudioRecorderResult {
 }
 
 /** Records mic audio, resamples to 16kHz mono, and auto-ends the utterance
- * on trailing silence — the browser mirror of backend/app/audio_io.py so
- * both entry points (CLI and web) share the same VAD behavior. */
+ * on trailing silence — the browser mirror of backend/app/audio_io.py so both
+ * entry points (CLI and web) end an utterance the same way.
+ *
+ * This is *endpointing*, not voice activity detection: RMS energy cannot tell
+ * speech from a television or a fan, so anything loud enough keeps the window
+ * open. Real VAD runs server-side on the completed buffer
+ * (backend/app/voice/vad.py) and decides whether it was speech at all. */
 export function useAudioRecorder(onUtterance: (audio: Float32Array) => void): UseAudioRecorderResult {
   const [state, setState] = useState<RecorderState>("idle");
   const [amplitude, setAmplitude] = useState(0);

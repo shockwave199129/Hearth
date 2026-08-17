@@ -46,6 +46,13 @@ def process_session_memory(user_id: str, memory: ShortTermMemory) -> MemoryForma
     for message in memory.messages:
         if message.get("role") != "user":
             continue
+        # Someone other than the enrolled user spoke this turn (app.voice.
+        # verification). It was still answered and still stored in the
+        # transcript — it just must not become a durable "fact" about the
+        # user. `is False` on purpose: None means nothing was checked, and
+        # has to keep forming memories exactly as before verification existed.
+        if message.get("speaker_verified") is False:
+            continue
         text = str(message.get("content", "")).strip()
         if not text or not _should_form(text):
             continue

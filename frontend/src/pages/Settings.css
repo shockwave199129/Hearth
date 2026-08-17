@@ -115,6 +115,39 @@
   gap: var(--space-3);
 }
 
+/* Same geometry as the danger button, ordinary accent colour — export is a
+   safe, repeatable action and should not read as destructive. */
+.settings__button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-4);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.settings__button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* An absolute filesystem path — long, must not overflow the card, and worth
+   being selectable as one unit so it can be pasted into a file manager. */
+.settings__path {
+  /* Spacing comes from the wrapping .settings__field's flex gap; a margin
+     here would stack on top of it. */
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 .settings__danger-button {
   border: 1px solid var(--color-danger);
   border-radius: var(--radius-sm);
